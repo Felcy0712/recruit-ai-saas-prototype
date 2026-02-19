@@ -6,13 +6,10 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { candidates } from "@/lib/mock-data"
 import {
-  GripVertical,
   CalendarClock,
   Star,
-  X,
   Sparkles,
   Shield,
-  ArrowRight,
   MessageSquare,
 } from "lucide-react"
 import Link from "next/link"
@@ -25,12 +22,13 @@ export default function ShortlistPage() {
     "2": ["Strong technical"],
     "8": ["Design lead potential"],
   })
+
+  // NEW: invite UI state
   const [selectedSlotById, setSelectedSlotById] = useState<Record<string, string>>({})
   const [sendingById, setSendingById] = useState<Record<string, boolean>>({})
   const [sentById, setSentById] = useState<Record<string, boolean>>({})
+
   const slots = ["Tomorrow 3 PM", "Tomorrow 5 PM", "Fri 11 AM"]
-
-
 
   const orderedCandidates = order
     .map((id) => shortlisted.find((c) => c.id === id))
@@ -51,35 +49,39 @@ export default function ShortlistPage() {
   }
 
   async function sendInvite(candidate: any) {
-  const slot = selectedSlotById[candidate.id]
-  if (!slot) return
+    const slot = selectedSlotById[candidate.id]
+    if (!slot) return
 
-  setSendingById((p) => ({ ...p, [candidate.id]: true }))
+    setSendingById((p) => ({ ...p, [candidate.id]: true }))
 
-  const payload = {
-    candidate_id: candidate.id,
-    candidate_name: candidate.name,
-    candidate_email: candidate.email || "john@example.com", // replace with real email if you have
-    job_id: "job_001",
-    job_title: "Position",
-    recruiter_name: "Sarah",
-    recruiter_email: "sarah@acme.com",
-    company: "Acme Inc",
-    time_slot: slot,
-    email_subject: `Interview Invitation - ${candidate.name}`,
-    email_body: `Hi ${candidate.name}, you are invited for an interview. Slot: ${slot}.`
+    const payload = {
+      candidate_id: candidate.id,
+      candidate_name: candidate.name,
+      candidate_email: candidate.email || "john@example.com", // TODO: replace with real email from your data
+      job_id: "job_001",
+      job_title: "Position",
+      recruiter_name: "Sarah",
+      recruiter_email: "sarah@acme.com",
+      company: "Acme Inc",
+      time_slot: slot,
+      email_subject: `Interview Invitation - ${candidate.name}`,
+      email_body: `Hi ${candidate.name}, you are invited for an interview. Selected slot: ${slot}.`,
+    }
+
+    try {
+      const res = await fetch("/api/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+
+      setSentById((p) => ({ ...p, [candidate.id]: res.ok }))
+    } catch {
+      setSentById((p) => ({ ...p, [candidate.id]: false }))
+    } finally {
+      setSendingById((p) => ({ ...p, [candidate.id]: false }))
+    }
   }
-
-  const res = await fetch("/api/invite", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
-
-  setSendingById((p) => ({ ...p, [candidate.id]: false }))
-  setSentById((p) => ({ ...p, [candidate.id]: res.ok }))
-}
-
 
   return (
     <div className="flex flex-col gap-6">
@@ -105,7 +107,9 @@ export default function ShortlistPage() {
         </div>
         <div className="flex-1">
           <p className="text-sm font-medium text-foreground">
-            AI recommends interviewing <span className="text-primary font-semibold">Sarah Chen</span> and <span className="text-primary font-semibold">Marcus Johnson</span> first.
+            AI recommends interviewing{" "}
+            <span className="text-primary font-semibold">Sarah Chen</span> and{" "}
+            <span className="text-primary font-semibold">Marcus Johnson</span> first.
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">
             Both scored 90%+ and have all required skills.
@@ -123,7 +127,7 @@ export default function ShortlistPage() {
           <Card key={candidate.id} className="border-border">
             <CardContent className="pt-4 pb-4">
               <div className="flex items-center gap-4">
-                {/* Rank & drag handle */}
+                {/* Rank */}
                 <div className="flex items-center gap-2">
                   <div className="flex flex-col gap-0.5">
                     <button
@@ -132,7 +136,9 @@ export default function ShortlistPage() {
                       disabled={index === 0}
                       aria-label="Move up"
                     >
-                      <svg width="12" height="8" viewBox="0 0 12 8" fill="currentColor"><path d="M6 0L12 8H0L6 0Z"/></svg>
+                      <svg width="12" height="8" viewBox="0 0 12 8" fill="currentColor">
+                        <path d="M6 0L12 8H0L6 0Z" />
+                      </svg>
                     </button>
                     <button
                       onClick={() => moveDown(index)}
@@ -140,7 +146,9 @@ export default function ShortlistPage() {
                       disabled={index === orderedCandidates.length - 1}
                       aria-label="Move down"
                     >
-                      <svg width="12" height="8" viewBox="0 0 12 8" fill="currentColor"><path d="M6 8L0 0H12L6 8Z"/></svg>
+                      <svg width="12" height="8" viewBox="0 0 12 8" fill="currentColor">
+                        <path d="M6 8L0 0H12L6 8Z" />
+                      </svg>
                     </button>
                   </div>
                   <span className="text-lg font-bold text-muted-foreground w-6 text-center">
@@ -152,13 +160,19 @@ export default function ShortlistPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3">
                     <h3 className="font-semibold text-foreground">{candidate.name}</h3>
-                    <span className={`text-sm font-semibold ${candidate.score >= 85 ? "text-success" : "text-warning"}`}>
+                    <span
+                      className={`text-sm font-semibold ${
+                        candidate.score >= 85 ? "text-success" : "text-warning"
+                      }`}
+                    >
                       {candidate.score}%
                     </span>
                   </div>
-                  <p className="text-sm text-muted-foreground">{candidate.role} &middot; {candidate.experience}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {candidate.role} &middot; {candidate.experience}
+                  </p>
                   <div className="flex flex-wrap gap-1.5 mt-2">
-                    {candidate.skills.map((skill) => (
+                    {candidate.skills.map((skill: string) => (
                       <Badge key={skill} variant="outline" className="text-xs font-normal">
                         {skill}
                       </Badge>
@@ -173,16 +187,56 @@ export default function ShortlistPage() {
 
                 {/* Actions */}
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" className="bg-transparent text-foreground hidden sm:flex">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="bg-transparent text-foreground hidden sm:flex"
+                  >
                     <MessageSquare className="size-3.5 mr-1" />
                     Notes
                   </Button>
-                  <Link href="/dashboard/scheduling">
-                    <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">
-                      <CalendarClock className="size-3.5 mr-1" />
-                      Schedule
+
+                  {/* NEW: Slot + Send Invite */}
+                  <div className="flex flex-col gap-2">
+                    <select
+                      value={selectedSlotById[candidate.id] || ""}
+                      onChange={(e) =>
+                        setSelectedSlotById((prev) => ({
+                          ...prev,
+                          [candidate.id]: e.target.value,
+                        }))
+                      }
+                      className="text-xs border rounded px-2 py-1"
+                    >
+                      <option value="">Select time slot</option>
+                      {slots.map((slot) => (
+                        <option key={slot} value={slot}>
+                          {slot}
+                        </option>
+                      ))}
+                    </select>
+
+                    <Button
+                      size="sm"
+                      disabled={!selectedSlotById[candidate.id] || !!sendingById[candidate.id]}
+                      onClick={() => sendInvite(candidate)}
+                      className="bg-primary text-primary-foreground hover:bg-primary/90"
+                    >
+                      {sendingById[candidate.id]
+                        ? "Sending..."
+                        : sentById[candidate.id]
+                        ? "Invite Sent ✅"
+                        : "Send Invite"}
                     </Button>
-                  </Link>
+
+                    {/* Keep your old schedule link if you want */}
+                    <Link href="/dashboard/scheduling" className="hidden">
+                      <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">
+                        <CalendarClock className="size-3.5 mr-1" />
+                        Schedule
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -205,7 +259,9 @@ export default function ShortlistPage() {
                 <tr className="border-b border-border">
                   <th className="text-left py-3 pr-4 text-muted-foreground font-medium">Criteria</th>
                   {orderedCandidates.map((c) => (
-                    <th key={c.id} className="text-center py-3 px-4 text-foreground font-medium">{c.name.split(" ")[0]}</th>
+                    <th key={c.id} className="text-center py-3 px-4 text-foreground font-medium">
+                      {c.name.split(" ")[0]}
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -215,7 +271,9 @@ export default function ShortlistPage() {
                     <td className="py-3 pr-4 text-muted-foreground">{criteria}</td>
                     {orderedCandidates.map((c) => (
                       <td key={c.id} className="text-center py-3 px-4">
-                        {criteria === "AI Score" && <span className="font-semibold text-foreground">{c.score}%</span>}
+                        {criteria === "AI Score" && (
+                          <span className="font-semibold text-foreground">{c.score}%</span>
+                        )}
                         {criteria === "Experience" && <span className="text-foreground">{c.experience}</span>}
                         {criteria === "Skills Match" && (
                           <Badge variant="secondary" className="text-xs">
