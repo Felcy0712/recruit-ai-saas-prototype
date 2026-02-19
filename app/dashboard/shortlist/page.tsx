@@ -23,13 +23,6 @@ export default function ShortlistPage() {
     "8": ["Design lead potential"],
   })
 
-  // NEW: invite UI state
-  const [selectedSlotById, setSelectedSlotById] = useState<Record<string, string>>({})
-  const [sendingById, setSendingById] = useState<Record<string, boolean>>({})
-  const [sentById, setSentById] = useState<Record<string, boolean>>({})
-
-  const slots = ["Tomorrow 3 PM", "Tomorrow 5 PM", "Fri 11 AM"]
-
   const orderedCandidates = order
     .map((id) => shortlisted.find((c) => c.id === id))
     .filter(Boolean) as typeof shortlisted
@@ -46,41 +39,6 @@ export default function ShortlistPage() {
     const newOrder = [...order]
     ;[newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]]
     setOrder(newOrder)
-  }
-
-  async function sendInvite(candidate: any) {
-    const slot = selectedSlotById[candidate.id]
-    if (!slot) return
-
-    setSendingById((p) => ({ ...p, [candidate.id]: true }))
-
-    const payload = {
-      candidate_id: candidate.id,
-      candidate_name: candidate.name,
-      candidate_email: candidate.email || "john@example.com", // TODO: replace with real email from your data
-      job_id: "job_001",
-      job_title: "Position",
-      recruiter_name: "Sarah",
-      recruiter_email: "sarah@acme.com",
-      company: "Acme Inc",
-      time_slot: slot,
-      email_subject: `Interview Invitation - ${candidate.name}`,
-      email_body: `Hi ${candidate.name}, you are invited for an interview. Selected slot: ${slot}.`,
-    }
-
-    try {
-      const res = await fetch("/api/invite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
-
-      setSentById((p) => ({ ...p, [candidate.id]: res.ok }))
-    } catch {
-      setSentById((p) => ({ ...p, [candidate.id]: false }))
-    } finally {
-      setSendingById((p) => ({ ...p, [candidate.id]: false }))
-    }
   }
 
   return (
@@ -185,58 +143,16 @@ export default function ShortlistPage() {
                   </div>
                 </div>
 
-                {/* Actions */}
+                {/* Actions - ONLY NOTES BUTTON */}
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    className="bg-transparent text-foreground hidden sm:flex"
+                    className="bg-transparent text-foreground"
                   >
                     <MessageSquare className="size-3.5 mr-1" />
                     Notes
                   </Button>
-
-                  {/* NEW: Slot + Send Invite */}
-                  <div className="flex flex-col gap-2">
-                    <select
-                      value={selectedSlotById[candidate.id] || ""}
-                      onChange={(e) =>
-                        setSelectedSlotById((prev) => ({
-                          ...prev,
-                          [candidate.id]: e.target.value,
-                        }))
-                      }
-                      className="text-xs border rounded px-2 py-1"
-                    >
-                      <option value="">Select time slot</option>
-                      {slots.map((slot) => (
-                        <option key={slot} value={slot}>
-                          {slot}
-                        </option>
-                      ))}
-                    </select>
-
-                    <Button
-                      size="sm"
-                      disabled={!selectedSlotById[candidate.id] || !!sendingById[candidate.id]}
-                      onClick={() => sendInvite(candidate)}
-                      className="bg-primary text-primary-foreground hover:bg-primary/90"
-                    >
-                      {sendingById[candidate.id]
-                        ? "Sending..."
-                        : sentById[candidate.id]
-                        ? "Invite Sent ✅"
-                        : "Send Invite"}
-                    </Button>
-
-                    {/* Keep your old schedule link if you want */}
-                    <Link href="/dashboard/scheduling" className="hidden">
-                      <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">
-                        <CalendarClock className="size-3.5 mr-1" />
-                        Schedule
-                      </Button>
-                    </Link>
-                  </div>
                 </div>
               </div>
             </CardContent>
