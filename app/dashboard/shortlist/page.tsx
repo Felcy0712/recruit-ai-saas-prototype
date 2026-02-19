@@ -25,6 +25,12 @@ export default function ShortlistPage() {
     "2": ["Strong technical"],
     "8": ["Design lead potential"],
   })
+  const [selectedSlotById, setSelectedSlotById] = useState<Record<string, string>>({})
+  const [sendingById, setSendingById] = useState<Record<string, boolean>>({})
+  const [sentById, setSentById] = useState<Record<string, boolean>>({})
+  const slots = ["Tomorrow 3 PM", "Tomorrow 5 PM", "Fri 11 AM"]
+
+
 
   const orderedCandidates = order
     .map((id) => shortlisted.find((c) => c.id === id))
@@ -43,6 +49,37 @@ export default function ShortlistPage() {
     ;[newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]]
     setOrder(newOrder)
   }
+
+  async function sendInvite(candidate: any) {
+  const slot = selectedSlotById[candidate.id]
+  if (!slot) return
+
+  setSendingById((p) => ({ ...p, [candidate.id]: true }))
+
+  const payload = {
+    candidate_id: candidate.id,
+    candidate_name: candidate.name,
+    candidate_email: candidate.email || "john@example.com", // replace with real email if you have
+    job_id: "job_001",
+    job_title: "Position",
+    recruiter_name: "Sarah",
+    recruiter_email: "sarah@acme.com",
+    company: "Acme Inc",
+    time_slot: slot,
+    email_subject: `Interview Invitation - ${candidate.name}`,
+    email_body: `Hi ${candidate.name}, you are invited for an interview. Slot: ${slot}.`
+  }
+
+  const res = await fetch("/api/invite", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+
+  setSendingById((p) => ({ ...p, [candidate.id]: false }))
+  setSentById((p) => ({ ...p, [candidate.id]: res.ok }))
+}
+
 
   return (
     <div className="flex flex-col gap-6">
