@@ -239,36 +239,55 @@ export default function CandidatesPage() {
   }
 
   async function runScoring() {
-    setScoreError(null)
-    if (!jdFile) { setScoreError("Please upload a JD file first."); return }
-    if (!resumeFiles.length) { setScoreError("Please upload at least 1 resume (3–5 recommended)."); return }
+  setScoreError(null)
+  if (!jdFile) { setScoreError("Please upload a JD file first."); return }
+  if (!resumeFiles.length) { setScoreError("Please upload at least 1 resume (3–5 recommended)."); return }
 
-    setIsScoring(true)
-    try {
-      const fd = new FormData()
-      fd.append("recruiter_name", "Recruiter")
-      fd.append("recruiter_email", "recruiter@example.com")
-      fd.append("company", "Acme Inc")
-      fd.append("job_title", "Position")
-      fd.append("JD", jdFile)
-      resumeFiles.forEach((f, i) => fd.append(`resume_${i}`, f))
+  setIsScoring(true)
+  try {
+    const fd = new FormData()
+    fd.append("recruiter_name", "Recruiter")
+    fd.append("recruiter_email", "recruiter@example.com")
+    fd.append("company", "Acme Inc")
+    fd.append("job_title", "Position")
+    fd.append("JD", jdFile)
+    resumeFiles.forEach((f, i) => fd.append(`resume_${i}`, f))
 
-      const r = await fetch("/api/score", { method: "POST", body: fd })
-      const data = await r.json()
-      if (!r.ok) throw new Error(data?.error || data?.message || "Scoring failed")
+    const r = await fetch("/api/score", { method: "POST", body: fd })
 
-      const ranked: RankedCandidate[] = data?.ranked_candidates || []
-      if (!Array.isArray(ranked) || ranked.length === 0) throw new Error("No ranked_candidates returned from Workflow A")
+    // ✅ Read as text first, then parse
+    const rawText = await r.text()
 
-      localStorage.setItem(LS_KEY, JSON.stringify({ ranked_candidates: ranked }))
-      setCandidateRows(ranked.map(toCandidateRow))
-      setShowUpload(false)
-    } catch (e: any) {
-      setScoreError(e?.message || String(e))
-    } finally {
-      setIsScoring(false)
+    if (!rawText || rawText.trim() === "") {
+      throw new Error("Server returned empty response — check n8n workflow is active")
     }
+
+    let data
+    try {
+      data = JSON.parse(rawText)
+    } catch {
+      throw new Error(`Server returned non-JSON: ${rawText.slice(0, 200)}`)
+    }
+
+    if (!r.ok) {
+      throw new Error(data?.error || data?.message || `Request failed with status ${r.status}`)
+    }
+
+    const ranked = data?.ranked_candidates || []
+    if (!Array.isArray(ranked) || ranked.length === 0) {
+      throw new Error("No ranked_candidates returned — check n8n Respond to Webhook node")
+    }
+
+    localStorage.setItem(LS_KEY, JSON.stringify({ ranked_candidates: ranked }))
+    setCandidateRows(ranked.map(toCandidateRow))
+    setShowUpload(false)
+
+  } catch (e: any) {
+    setScoreError(e?.message || String(e))
+  } finally {
+    setIsScoring(false)
   }
+}
 
   // ── Detail view ──────────────────────────────────────────────────────────
   if (selectedCandidate) {
