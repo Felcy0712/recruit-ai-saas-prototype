@@ -3,11 +3,11 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server"
 
-import pdf from "pdf-parse";
+// import pdf from "pdf-parse";
 
 export const maxDuration = 60; // seconds — requires Vercel Pro for >10s
 
-//const pdf = require("pdf-parse");
+const pdf = require("pdf-parse");
 
 async function pdfParse(buffer: Buffer): Promise<string> {
   //console.log('inside the function');
