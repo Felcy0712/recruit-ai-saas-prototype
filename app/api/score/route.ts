@@ -1,5 +1,8 @@
 export const runtime = "nodejs";
 
+
+import { NextRequest, NextResponse } from "next/server"
+
 import * as pdf from "pdf-parse";
 
 //const pdf = require("pdf-parse");
@@ -10,17 +13,12 @@ async function pdfParse(buffer: Buffer): Promise<string> {
   return result.text.trim();
 }
 
+export async function POST(req: NextRequest) {
+  const formData = await req.formData()
 
-export async function POST(req: Request) {
-  try {
-    const url = process.env.N8N_SCORE_URL;
-    if (!url) {
-      return Response.json({ ok: false, error: "Missing env var: N8N_SCORE_URL" }, { status: 500 });
-    }
+  const forward = new FormData()
 
-    const incoming = await req.formData();
-
-    const jdFile = incoming.get("JD") as File;
+      const jdFile = formData.get("JD") as File;
     if (!jdFile) {
       return Response.json({ ok: false, error: "No JD file uploaded" }, { status: 400 });
     }
@@ -28,57 +26,32 @@ export async function POST(req: Request) {
     // const jd_text = (await pdfParse(jdBuffer)).text.trim();
     const jd_text = await pdfParse(jdBuffer);
 
-    console.log(jd_text);
+  // Forward recruiter fields
+  forward.append("recruiter_name", formData.get("recruiter_name") as string)
+  forward.append("recruiter_email", formData.get("recruiter_email") as string)
+  forward.append("company", formData.get("company") as string)
+  forward.append("job_title", formData.get("job_title") as string)
+  forward.append("jd_text_final", jd_text);
 
-    const resumes = [];
-    let i = 0;
-    while (incoming.get(`resume_${i}`)) {
-      const file = incoming.get(`resume_${i}`) as File;
-      const buffer = Buffer.from(await file.arrayBuffer());
-      //console.log('buffer'+buffer)
-      //const text = (await pdfParse(buffer)).text.trim();
-      //const text = "";
-      const text = await pdfParse(buffer);
-     // console.log(text);
-      resumes.push({ index: i, candidate_id: `cand_${i}`, text, fileName: file.name });
-      i++;
-    }
-
-    if (!resumes.length) {
-      return Response.json({ ok: false, error: "No resume files uploaded" }, { status: 400 });
-    }
-
-    const payload = {
-      recruiter: {
-        name: incoming.get("recruiter_name"),
-        email: incoming.get("recruiter_email"),
-        company: incoming.get("company"),
-      },
-      job_title: incoming.get("job_title"),
-      jd_text,
-      resumes,
-    };
-
-    const r = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    const rawText = await r.text();
-
-    if (!rawText || rawText.trim() === "") {
-      return Response.json({ ok: false, error: "n8n returned empty response" }, { status: 502 });
-    }
-
-    try {
-      const data = JSON.parse(rawText);
-      return Response.json(data, { status: r.status });
-    } catch {
-      return Response.json({ ok: false, error: "n8n returned non-JSON", raw: rawText.slice(0, 500) }, { status: 502 });
-    }
-
-  } catch (e: any) {
-    return Response.json({ ok: false, error: e?.message || String(e) }, { status: 500 });
+  // Forward JD as binary blob with correct filename
+  const jd = formData.get("JD") as File
+  if (jd) {
+    forward.append("JD", jd, jd.name)  // ← must pass filename
   }
+
+  // Forward resumes as binary blobs with correct filenames
+  let i = 0
+  while (formData.get(`resume_${i}`)) {
+    const resume = formData.get(`resume_${i}`) as File
+    forward.append(`resume_${i}`, resume, resume.name)  // ← must pass filename
+    i++
+  }
+
+  const n8nRes = await fetch(process.env.N8N_WEBHOOK_URL!, {
+    method: "POST",
+    body: forward,
+  })
+
+  const data = await n8nRes.json()
+  return NextResponse.json(data, { status: n8nRes.status })
 }
