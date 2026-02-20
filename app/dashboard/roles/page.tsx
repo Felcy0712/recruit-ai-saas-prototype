@@ -32,6 +32,8 @@ export default function RolesPage() {
   const removeSkill = (skill: string) => {
     setSkills(skills.filter((s) => s !== skill))
   }
+  
+  const [jdFile, setJdFile] = useState<File | null>(null)
 
   return (
     <div className="flex flex-col gap-6">
@@ -102,19 +104,38 @@ export default function RolesPage() {
               />
             </div>
 
-            <div className="flex flex-col gap-2">
+          {/* <div className="flex flex-col gap-2">
               <label className="text-sm font-medium text-foreground">Job Description</label>
               <div className="rounded-lg border-2 border-dashed border-border p-8 flex flex-col items-center justify-center text-muted-foreground hover:border-primary/40 transition-colors cursor-pointer">
                 <Upload className="size-8 mb-2" />
                 <p className="text-sm font-medium">Upload job description</p>
                 <p className="text-xs mt-1">PDF, DOCX, or TXT up to 10MB</p>
               </div>
-            </div>
+            </div>*/}
 
-            <Button className="w-fit bg-primary text-primary-foreground hover:bg-primary/90">
+            <div className="flex flex-col gap-2">
+             <label className="text-sm font-medium text-foreground">Job Description</label>
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx,.txt"
+                onChange={(e) => {
+                const f = e.target.files?.[0] || null
+                setJdFile(f)
+                if (f) {
+                      // store JD file in memory for later step (Candidates page)
+                localStorage.setItem("recruitai_jd_name", f.name)
+              }}}
+                className="text-sm text-muted-foreground"
+                   />
+                  {jdFile && (
+                  <p className="text-xs text-muted-foreground"> Selected: <span className="text-foreground">{jdFile.name}</span>
+                 </p>
+                  )}
+            </div>
+            {/*<Button className="w-fit bg-primary text-primary-foreground hover:bg-primary/90">
               <Sparkles className="size-4 mr-1" />
               Generate Screening Criteria
-            </Button>
+            </Button>*/}
           </CardContent>
         </Card>
       )}
