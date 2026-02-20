@@ -1,54 +1,63 @@
+import pdfParse from "pdf-parse";
+
 export async function POST(req: Request) {
   try {
     const url = process.env.N8N_SCORE_URL;
     if (!url) {
-      return Response.json(
-        { ok: false, error: "Missing env var: N8N_SCORE_URL" },
-        { status: 500 }
-      );
+      return Response.json({ ok: false, error: "Missing env var: N8N_SCORE_URL" }, { status: 500 });
     }
 
     const incoming = await req.formData();
-    const fd = new FormData();
 
-    for (const [key, value] of incoming.entries()) {
-      if (value instanceof File) {
-        // ✅ Explicitly pass filename and force correct MIME type
-        const mime =
-          value.type ||
-          (value.name.endsWith(".pdf")
-            ? "application/pdf"
-            : value.name.endsWith(".docx")
-            ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            : "application/octet-stream");
-
-        const blob = new Blob([await value.arrayBuffer()], { type: mime });
-        fd.append(key, blob, value.name); // ← third arg (filename) is the fix
-      } else {
-        fd.append(key, value);
-      }
+    // Extract JD text
+    const jdFile = incoming.get("JD") as File;
+    if (!jdFile) {
+      return Response.json({ ok: false, error: "No JD file uploaded" }, { status: 400 });
     }
+    const jdBuffer = Buffer.from(await jdFile.arrayBuffer());
+    const jd_text = (await pdfParse(jdBuffer)).text.trim();
+
+    // Extract each resume text
+    const resumes = [];
+    let i = 0;
+    while (incoming.get(`resume_${i}`)) {
+      const file = incoming.get(`resume_${i}`) as File;
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const text = (await pdfParse(buffer)).text.trim();
+      resumes.push({ index: i, candidate_id: `cand_${i}`, text, fileName: file.name });
+      i++;
+    }
+
+    if (!resumes.length) {
+      return Response.json({ ok: false, error: "No resume files uploaded" }, { status: 400 });
+    }
+
+    const payload = {
+      recruiter: {
+        name: incoming.get("recruiter_name"),
+        email: incoming.get("recruiter_email"),
+        company: incoming.get("company"),
+      },
+      job_title: incoming.get("job_title"),
+      jd_text,
+      resumes,
+    };
 
     const r = await fetch(url, {
       method: "POST",
-      body: fd,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
 
-    const text = await r.text();
-
+    const rawText = await r.text();
     try {
-      const data = JSON.parse(text);
+      const data = JSON.parse(rawText);
       return Response.json(data, { status: r.status });
     } catch {
-      return Response.json(
-        { ok: false, error: "n8n returned non-JSON", raw: text },
-        { status: 502 }
-      );
+      return Response.json({ ok: false, error: "n8n returned non-JSON", raw: rawText }, { status: 502 });
     }
+
   } catch (e: any) {
-    return Response.json(
-      { ok: false, error: e?.message || String(e) },
-      { status: 500 }
-    );
+    return Response.json({ ok: false, error: e?.message || String(e) }, { status: 500 });
   }
 }
