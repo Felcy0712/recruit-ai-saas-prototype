@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -27,6 +27,10 @@ import {
   MessageSquare,
   CalendarClock,
   Shield,
+  FileText,
+  Files,
+  CheckCircle2,
+  X,
 } from "lucide-react"
 
 type CandidateStatus = "shortlisted" | "review" | "rejected"
@@ -66,10 +70,7 @@ function toCandidateRow(rc: RankedCandidate, idx: number): CandidateRow {
   const email = (rc.candidate_email || "").trim()
   const role = (rc.current_role || "Candidate").trim()
   const score = typeof rc.score === "number" ? rc.score : 0
-
-  // Convert strengths into “skills” badges for UI
   const skills = Array.isArray(rc.strengths) ? rc.strengths.slice(0, 6).map(s => s.slice(0, 22)) : []
-
   const explanation =
     (Array.isArray(rc.gaps) && rc.gaps.length > 0)
       ? `Top gap: ${rc.gaps[0]}`
@@ -90,6 +91,99 @@ function toCandidateRow(rc: RankedCandidate, idx: number): CandidateRow {
   }
 }
 
+// ── FileUploadButton component ───────────────────────────────────────────────
+function FileUploadButton({
+  label,
+  subLabel,
+  accept,
+  multiple = false,
+  icon: Icon,
+  files,
+  onChange,
+}: {
+  label: string
+  subLabel: string
+  accept: string
+  multiple?: boolean
+  icon: React.ElementType
+  files: File[]
+  onChange: (files: File[]) => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files || [])
+    if (!picked.length) return
+    onChange(multiple ? [...files, ...picked] : [picked[0]])
+    e.target.value = ""
+  }
+
+  const removeFile = (idx: number) => {
+    onChange(files.filter((_, i) => i !== idx))
+  }
+
+  const hasFiles = files.length > 0
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className={`flex items-center justify-center w-9 h-9 rounded-lg ${hasFiles ? "bg-emerald-50 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+            {hasFiles ? <CheckCircle2 className="size-5" /> : <Icon className="size-5" />}
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground">{label}</p>
+            <p className="text-xs text-muted-foreground">{subLabel}</p>
+          </div>
+        </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => inputRef.current?.click()}
+          className="shrink-0 gap-2 border-primary/40 text-primary hover:bg-primary/5 hover:border-primary"
+        >
+          <Upload className="size-3.5" />
+          {hasFiles ? (multiple ? "Add more" : "Replace") : "Choose file" + (multiple ? "s" : "")}
+        </Button>
+
+        <input
+          ref={inputRef}
+          type="file"
+          accept={accept}
+          multiple={multiple}
+          onChange={handleChange}
+          className="hidden"
+        />
+      </div>
+
+      {hasFiles && (
+        <div className="flex flex-wrap gap-2 pl-12">
+          {files.map((f, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted border border-border text-xs text-foreground"
+            >
+              <FileText className="size-3 text-primary shrink-0" />
+              <span className="max-w-[160px] truncate">{f.name}</span>
+              <span className="text-muted-foreground">({(f.size / 1024).toFixed(0)} KB)</span>
+              <button
+                onClick={() => removeFile(i)}
+                className="ml-0.5 text-muted-foreground hover:text-destructive transition-colors"
+                title="Remove"
+              >
+                <X className="size-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main page ────────────────────────────────────────────────────────────────
 export default function CandidatesPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
@@ -98,16 +192,12 @@ export default function CandidatesPage() {
   const [sortField, setSortField] = useState<"score" | "name">("score")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
 
-  // Upload state
   const [jdFile, setJdFile] = useState<File | null>(null)
   const [resumeFiles, setResumeFiles] = useState<File[]>([])
   const [isScoring, setIsScoring] = useState(false)
   const [scoreError, setScoreError] = useState<string | null>(null)
-
-  // Real candidates state (replaces mock-data)
   const [candidateRows, setCandidateRows] = useState<CandidateRow[]>([])
 
-  // Load from localStorage so it persists across navigation / refresh
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS_KEY)
@@ -117,9 +207,7 @@ export default function CandidatesPage() {
       if (Array.isArray(ranked) && ranked.length) {
         setCandidateRows(ranked.map(toCandidateRow))
       }
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
   }, [])
 
   const filtered = useMemo(() => {
@@ -146,54 +234,32 @@ export default function CandidatesPage() {
     }
   }
 
-  // Update status actions
   const setStatus = (id: string, status: CandidateStatus) => {
-    setCandidateRows((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, status } : c))
-    )
+    setCandidateRows((prev) => prev.map((c) => (c.id === id ? { ...c, status } : c)))
   }
 
   async function runScoring() {
     setScoreError(null)
-
-    if (!jdFile) {
-      setScoreError("Please upload a JD file first.")
-      return
-    }
-    if (!resumeFiles.length) {
-      setScoreError("Please upload at least 1 resume (3–5 recommended).")
-      return
-    }
+    if (!jdFile) { setScoreError("Please upload a JD file first."); return }
+    if (!resumeFiles.length) { setScoreError("Please upload at least 1 resume (3–5 recommended)."); return }
 
     setIsScoring(true)
     try {
-      // Send multipart/form-data to Vercel API (/api/score)
       const fd = new FormData()
       fd.append("recruiter_name", "Recruiter")
       fd.append("recruiter_email", "recruiter@example.com")
       fd.append("company", "Acme Inc")
       fd.append("job_title", "Position")
       fd.append("JD", jdFile)
-
-      resumeFiles.forEach((f, i) => {
-        fd.append(`resume_${i}`, f)
-      })
+      resumeFiles.forEach((f, i) => fd.append(`resume_${i}`, f))
 
       const r = await fetch("/api/score", { method: "POST", body: fd })
       const data = await r.json()
+      if (!r.ok) throw new Error(data?.error || data?.message || "Scoring failed")
 
-      if (!r.ok) {
-        throw new Error(data?.error || data?.message || "Scoring failed")
-      }
-
-      // Expect n8n to return: { ranked_candidates: [...] }
       const ranked: RankedCandidate[] = data?.ranked_candidates || []
+      if (!Array.isArray(ranked) || ranked.length === 0) throw new Error("No ranked_candidates returned from Workflow A")
 
-      if (!Array.isArray(ranked) || ranked.length === 0) {
-        throw new Error("No ranked_candidates returned from Workflow A")
-      }
-
-      // Persist + update UI
       localStorage.setItem(LS_KEY, JSON.stringify({ ranked_candidates: ranked }))
       setCandidateRows(ranked.map(toCandidateRow))
       setShowUpload(false)
@@ -204,6 +270,7 @@ export default function CandidatesPage() {
     }
   }
 
+  // ── Detail view ──────────────────────────────────────────────────────────
   if (selectedCandidate) {
     return (
       <div className="flex flex-col gap-6">
@@ -228,44 +295,28 @@ export default function CandidatesPage() {
                     {selectedCandidate.score}%
                   </div>
                 </div>
-
                 <div className="flex flex-wrap gap-2 mt-4">
-                  <Button
-                    size="sm"
-                    className="bg-primary text-primary-foreground hover:bg-primary/90"
-                    onClick={() => setStatus(selectedCandidate.id, "shortlisted")}
-                  >
-                    <ListChecks className="size-3.5 mr-1" />
-                    Shortlist
+                  <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => setStatus(selectedCandidate.id, "shortlisted")}>
+                    <ListChecks className="size-3.5 mr-1" /> Shortlist
                   </Button>
                   <Button size="sm" variant="outline" className="bg-transparent text-foreground">
-                    <CalendarClock className="size-3.5 mr-1" />
-                    Schedule
+                    <CalendarClock className="size-3.5 mr-1" /> Schedule
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="bg-transparent text-destructive hover:bg-destructive/10"
-                    onClick={() => setStatus(selectedCandidate.id, "rejected")}
-                  >
-                    <XCircle className="size-3.5 mr-1" />
-                    Reject
+                  <Button size="sm" variant="outline" className="bg-transparent text-destructive hover:bg-destructive/10" onClick={() => setStatus(selectedCandidate.id, "rejected")}>
+                    <XCircle className="size-3.5 mr-1" /> Reject
                   </Button>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="border-primary/20 border-border">
+            <Card className="border-border">
               <CardHeader>
                 <CardTitle className="text-foreground flex items-center gap-2">
-                  <Brain className="size-4 text-primary" />
-                  AI Assessment
+                  <Brain className="size-4 text-primary" /> AI Assessment
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  {selectedCandidate.aiExplanation}
-                </p>
+                <p className="text-sm text-muted-foreground leading-relaxed">{selectedCandidate.aiExplanation}</p>
                 <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
                   <Shield className="size-3.5 text-primary" />
                   <span>Human review required before any action</span>
@@ -274,13 +325,9 @@ export default function CandidatesPage() {
             </Card>
 
             <Card className="border-border">
-              <CardHeader>
-                <CardTitle className="text-foreground">Resume Summary</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle className="text-foreground">Resume Summary</CardTitle></CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  {selectedCandidate.summary}
-                </p>
+                <p className="text-sm text-muted-foreground leading-relaxed">{selectedCandidate.summary}</p>
               </CardContent>
             </Card>
           </div>
@@ -289,20 +336,15 @@ export default function CandidatesPage() {
             <Card className="border-border">
               <CardHeader>
                 <CardTitle className="text-foreground flex items-center gap-2">
-                  <BarChart3 className="size-4 text-primary" />
-                  Strengths
+                  <BarChart3 className="size-4 text-primary" /> Strengths
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex flex-col gap-2 text-sm text-muted-foreground">
                   {(selectedCandidate.raw.strengths || []).slice(0, 6).map((s, i) => (
-                    <div key={i} className="rounded-md border border-border p-2">
-                      {s}
-                    </div>
+                    <div key={i} className="rounded-md border border-border p-2">{s}</div>
                   ))}
-                  {(!selectedCandidate.raw.strengths || selectedCandidate.raw.strengths.length === 0) && (
-                    <div className="text-xs">—</div>
-                  )}
+                  {(!selectedCandidate.raw.strengths || selectedCandidate.raw.strengths.length === 0) && <div className="text-xs">—</div>}
                 </div>
               </CardContent>
             </Card>
@@ -310,8 +352,7 @@ export default function CandidatesPage() {
             <Card className="border-border">
               <CardHeader>
                 <CardTitle className="text-foreground flex items-center gap-2">
-                  <MessageSquare className="size-4 text-primary" />
-                  Notes
+                  <MessageSquare className="size-4 text-primary" /> Notes
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -327,14 +368,13 @@ export default function CandidatesPage() {
     )
   }
 
+  // ── List view ────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Candidates</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            AI-ranked candidates across all roles.
-          </p>
+          <p className="text-muted-foreground text-sm mt-1">AI-ranked candidates across all roles.</p>
         </div>
         <Button
           onClick={() => setShowUpload(!showUpload)}
@@ -345,59 +385,70 @@ export default function CandidatesPage() {
         </Button>
       </div>
 
-      {/* Upload zone */}
+      {/* Upload panel */}
       {showUpload && (
         <Card className="border-border">
-          <CardContent className="pt-6 flex flex-col gap-4">
-            <div className="rounded-lg border border-border p-4">
-              <p className="text-sm font-medium text-foreground mb-2">1) Upload JD (PDF/DOCX/TXT)</p>
-              <input
-                type="file"
+          <CardContent className="pt-6 flex flex-col gap-5">
+
+            {/* Step 1 – JD */}
+            <div className="rounded-lg border border-border bg-muted/30 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary text-primary-foreground text-[11px] font-bold shrink-0">1</span>
+                <p className="text-sm font-semibold text-foreground">Upload Job Description</p>
+              </div>
+              <FileUploadButton
+                label="Job Description file"
+                subLabel="PDF, DOCX or TXT · single file"
                 accept=".pdf,.doc,.docx,.txt"
-                onChange={(e) => setJdFile(e.target.files?.[0] || null)}
-                className="text-sm text-muted-foreground"
+                multiple={false}
+                icon={FileText}
+                files={jdFile ? [jdFile] : []}
+                onChange={(f) => setJdFile(f[0] ?? null)}
               />
-              {jdFile && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  Selected JD: <span className="text-foreground">{jdFile.name}</span>
-                </p>
-              )}
             </div>
 
-            <div className="rounded-lg border border-border p-4">
-              <p className="text-sm font-medium text-foreground mb-2">2) Upload Resumes (3–5 recommended)</p>
-              <input
-                type="file"
+            {/* Step 2 – Resumes */}
+            <div className="rounded-lg border border-border bg-muted/30 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary text-primary-foreground text-[11px] font-bold shrink-0">2</span>
+                <p className="text-sm font-semibold text-foreground">
+                  Upload Resumes
+                  <span className="ml-1 font-normal text-muted-foreground">(3–5 recommended)</span>
+                </p>
+              </div>
+              <FileUploadButton
+                label="Candidate resumes"
+                subLabel="PDF or DOCX · multiple files allowed"
                 accept=".pdf,.doc,.docx"
-                multiple
-                onChange={(e) => setResumeFiles(Array.from(e.target.files || []))}
-                className="text-sm text-muted-foreground"
+                multiple={true}
+                icon={Files}
+                files={resumeFiles}
+                onChange={setResumeFiles}
               />
-              {resumeFiles.length > 0 && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  Selected resumes: <span className="text-foreground">{resumeFiles.length}</span>
-                </p>
-              )}
             </div>
 
+            {/* Error */}
             {scoreError && (
-              <div className="text-sm text-destructive">
+              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/5 border border-destructive/20 rounded-lg px-4 py-2.5">
+                <XCircle className="size-4 shrink-0" />
                 {scoreError}
               </div>
             )}
 
-            <Button
-              onClick={runScoring}
-              disabled={isScoring}
-              className="w-fit bg-primary text-primary-foreground hover:bg-primary/90"
-            >
-              <Sparkles className="size-4 mr-1" />
-              {isScoring ? "Scoring..." : "Run AI Scoring"}
-            </Button>
-
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Sparkles className="size-3.5 text-primary" />
-              <span>Uploads go to Vercel → n8n Workflow A → candidates update automatically</span>
+            {/* Run button */}
+            <div className="flex flex-col gap-2">
+              <Button
+                onClick={runScoring}
+                disabled={isScoring || !jdFile || !resumeFiles.length}
+                className="w-fit bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                <Sparkles className="size-4 mr-1" />
+                {isScoring ? "Scoring..." : "Run AI Scoring"}
+              </Button>
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Sparkles className="size-3.5 text-primary" />
+                Uploads go to Vercel → n8n Workflow A → candidates update automatically
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -429,7 +480,7 @@ export default function CandidatesPage() {
         </div>
       </div>
 
-      {/* Candidates Table */}
+      {/* Candidates table */}
       <Card className="border-border">
         <CardContent className="p-0">
           <Table>
@@ -451,7 +502,6 @@ export default function CandidatesPage() {
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
-
             <TableBody>
               {filtered.map((candidate) => (
                 <TableRow key={candidate.id}>
@@ -461,61 +511,37 @@ export default function CandidatesPage() {
                       <p className="text-xs text-muted-foreground">{candidate.role}</p>
                     </div>
                   </TableCell>
-
                   <TableCell>
                     <span className={`font-semibold ${candidate.score >= 85 ? "text-success" : candidate.score >= 75 ? "text-warning" : "text-destructive"}`}>
                       {candidate.score}%
                     </span>
                   </TableCell>
-
                   <TableCell className="hidden md:table-cell">
                     <div className="flex flex-wrap gap-1">
                       {candidate.skills.slice(0, 3).map((skill) => (
-                        <Badge key={skill} variant="outline" className="text-xs font-normal">
-                          {skill}
-                        </Badge>
+                        <Badge key={skill} variant="outline" className="text-xs font-normal">{skill}</Badge>
                       ))}
                     </div>
                   </TableCell>
-
-                  <TableCell className="hidden lg:table-cell text-muted-foreground">
-                    {candidate.email}
-                  </TableCell>
-
+                  <TableCell className="hidden lg:table-cell text-muted-foreground">{candidate.email}</TableCell>
                   <TableCell>
                     <Badge
-                      variant={
-                        candidate.status === "shortlisted"
-                          ? "default"
-                          : candidate.status === "review"
-                          ? "secondary"
-                          : "outline"
-                      }
-                      className={
-                        candidate.status === "shortlisted"
-                          ? "bg-success text-success-foreground"
-                          : candidate.status === "rejected"
-                          ? "text-destructive"
-                          : ""
-                      }
+                      variant={candidate.status === "shortlisted" ? "default" : candidate.status === "review" ? "secondary" : "outline"}
+                      className={candidate.status === "shortlisted" ? "bg-success text-success-foreground" : candidate.status === "rejected" ? "text-destructive" : ""}
                     >
                       {candidate.status}
                     </Badge>
                   </TableCell>
-
                   <TableCell>
                     <div className="flex items-center gap-1">
                       <Button variant="ghost" size="icon" className="size-8" onClick={() => setShowDetail(candidate.id)}>
                         <Eye className="size-3.5 text-foreground" />
-                        <span className="sr-only">View details</span>
                       </Button>
                       <Button variant="ghost" size="icon" className="size-8" onClick={() => setStatus(candidate.id, "shortlisted")}>
                         <ListChecks className="size-3.5 text-primary" />
-                        <span className="sr-only">Shortlist</span>
                       </Button>
                       <Button variant="ghost" size="icon" className="size-8" onClick={() => setStatus(candidate.id, "rejected")}>
                         <XCircle className="size-3.5 text-destructive" />
-                        <span className="sr-only">Reject</span>
                       </Button>
                     </div>
                   </TableCell>
