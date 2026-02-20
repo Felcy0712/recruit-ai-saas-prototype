@@ -1,6 +1,15 @@
 export const runtime = "nodejs";
 
-const pdfParse = require("pdf-parse");
+import * as pdf from "pdf-parse";
+
+//const pdf = require("pdf-parse");
+
+async function pdfParse(buffer: Buffer): Promise<string> {
+  //console.log('inside the function');
+  const result = await pdf.default(buffer);
+  return result.text.trim();
+}
+
 
 export async function POST(req: Request) {
   try {
@@ -16,14 +25,21 @@ export async function POST(req: Request) {
       return Response.json({ ok: false, error: "No JD file uploaded" }, { status: 400 });
     }
     const jdBuffer = Buffer.from(await jdFile.arrayBuffer());
-    const jd_text = (await pdfParse(jdBuffer)).text.trim();
+    // const jd_text = (await pdfParse(jdBuffer)).text.trim();
+    const jd_text = await pdfParse(jdBuffer);
+
+    console.log(jd_text);
 
     const resumes = [];
     let i = 0;
     while (incoming.get(`resume_${i}`)) {
       const file = incoming.get(`resume_${i}`) as File;
       const buffer = Buffer.from(await file.arrayBuffer());
-      const text = (await pdfParse(buffer)).text.trim();
+      //console.log('buffer'+buffer)
+      //const text = (await pdfParse(buffer)).text.trim();
+      //const text = "";
+      const text = await pdfParse(buffer);
+     // console.log(text);
       resumes.push({ index: i, candidate_id: `cand_${i}`, text, fileName: file.name });
       i++;
     }
