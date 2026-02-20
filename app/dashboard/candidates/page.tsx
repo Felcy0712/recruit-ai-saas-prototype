@@ -75,7 +75,7 @@ function toCandidateRow(rc: RankedCandidate, idx: number): CandidateRow {
     (Array.isArray(rc.gaps) && rc.gaps.length > 0)
       ? `Top gap: ${rc.gaps[0]}`
       : (rc.recommendation ? `Recommendation: ${rc.recommendation}` : "AI assessed this candidate based on JD match and resume signals.")
-
+ 
   return {
     id: (rc.candidate_id || `cand_${idx}`),
     name,

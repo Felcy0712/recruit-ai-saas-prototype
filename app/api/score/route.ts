@@ -8,27 +8,34 @@ export async function POST(req: Request) {
       );
     }
 
-    // Read multipart form-data from browser
     const incoming = await req.formData();
-
-    // Build a new FormData to forward to n8n
     const fd = new FormData();
 
-    // Copy all fields (text + files) exactly as received
     for (const [key, value] of incoming.entries()) {
-      // value can be string or File
-      fd.append(key, value as any);
+      if (value instanceof File) {
+        // ✅ Explicitly pass filename and force correct MIME type
+        const mime =
+          value.type ||
+          (value.name.endsWith(".pdf")
+            ? "application/pdf"
+            : value.name.endsWith(".docx")
+            ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            : "application/octet-stream");
+
+        const blob = new Blob([await value.arrayBuffer()], { type: mime });
+        fd.append(key, blob, value.name); // ← third arg (filename) is the fix
+      } else {
+        fd.append(key, value);
+      }
     }
 
-    // Forward to n8n webhook
     const r = await fetch(url, {
       method: "POST",
-      body: fd, // IMPORTANT: do not set Content-Type manually
+      body: fd,
     });
 
     const text = await r.text();
 
-    // Return JSON if possible
     try {
       const data = JSON.parse(text);
       return Response.json(data, { status: r.status });
