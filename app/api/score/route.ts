@@ -1,4 +1,4 @@
-import pdfParse from "pdf-parse";
+const pdfParse = require("pdf-parse");
 
 export async function POST(req: Request) {
   try {
@@ -9,7 +9,6 @@ export async function POST(req: Request) {
 
     const incoming = await req.formData();
 
-    // Extract JD text
     const jdFile = incoming.get("JD") as File;
     if (!jdFile) {
       return Response.json({ ok: false, error: "No JD file uploaded" }, { status: 400 });
@@ -17,7 +16,6 @@ export async function POST(req: Request) {
     const jdBuffer = Buffer.from(await jdFile.arrayBuffer());
     const jd_text = (await pdfParse(jdBuffer)).text.trim();
 
-    // Extract each resume text
     const resumes = [];
     let i = 0;
     while (incoming.get(`resume_${i}`)) {
