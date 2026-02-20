@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   forward.append("recruiter_email", formData.get("recruiter_email") as string)
   forward.append("company", formData.get("company") as string)
   forward.append("job_title", formData.get("job_title") as string)
-  forward.append("jd_text_final", jd_text);
+  forward.append("jd_text_final", jd_text as string);
 
   // Forward JD as binary blob with correct filename
   const jd = formData.get("JD") as File
