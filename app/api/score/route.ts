@@ -11,7 +11,7 @@ const pdf = require("pdf-parse");
 
 async function pdfParse(buffer: Buffer): Promise<string> {
   //console.log('inside the function');
-  const result = await pdf.default(buffer);
+  const result = await pdf(buffer);
   return result.text.trim();
 }
 
