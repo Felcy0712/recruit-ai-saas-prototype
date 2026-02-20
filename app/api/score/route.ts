@@ -1,3 +1,5 @@
+export const runtime = "nodejs";
+
 const pdfParse = require("pdf-parse");
 
 export async function POST(req: Request) {
@@ -48,11 +50,16 @@ export async function POST(req: Request) {
     });
 
     const rawText = await r.text();
+
+    if (!rawText || rawText.trim() === "") {
+      return Response.json({ ok: false, error: "n8n returned empty response" }, { status: 502 });
+    }
+
     try {
       const data = JSON.parse(rawText);
       return Response.json(data, { status: r.status });
     } catch {
-      return Response.json({ ok: false, error: "n8n returned non-JSON", raw: rawText }, { status: 502 });
+      return Response.json({ ok: false, error: "n8n returned non-JSON", raw: rawText.slice(0, 500) }, { status: 502 });
     }
 
   } catch (e: any) {
