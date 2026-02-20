@@ -84,7 +84,7 @@ function toCandidateRow(rc: RankedCandidate, idx: number): CandidateRow {
     experience: "—",
     score,
     skills: skills.length ? skills : ["Resume parsed", "JD match"],
-    status: "review",
+    status: score > 85 ? "shortlisted" : score > 70 ? "review" : "rejected",
     aiExplanation: explanation,
     summary: rc.summary || "—",
     raw: rc,
@@ -264,7 +264,8 @@ export default function CandidatesPage() {
 
     let data
     try {
-      data = JSON.parse(rawText)
+     // data = JSON.parse(rawText)
+       data = Array.isArray(rawText) ? JSON.parse(rawText[0]) : JSON.parse(rawText);
     } catch {
       throw new Error(`Server returned non-JSON: ${rawText.slice(0, 200)}`)
     }
