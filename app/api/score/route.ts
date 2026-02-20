@@ -3,7 +3,9 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server"
 
-import * as pdf from "pdf-parse";
+import pdf from "pdf-parse";
+
+export const maxDuration = 60; // seconds — requires Vercel Pro for >10s
 
 //const pdf = require("pdf-parse");
 
