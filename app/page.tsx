@@ -10,6 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { RecruitLogo } from "@/components/recruit-logo"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { createClient } from "@/lib/supabase/client"
+import bcrypt from "bcryptjs"
 import {
   Brain,
   ListChecks,
@@ -38,8 +40,10 @@ export default function LandingPage() {
   const router = useRouter()
   const [activeSlide, setActiveSlide] = useState(0)
   const [showPassword, setShowPassword] = useState(false)
-  const [email, setEmail] = useState("") 
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
   const [loginError, setLoginError] = useState("")
+  const [loginLoading, setLoginLoading] = useState(false)
   const [videoPlaying, setVideoPlaying] = useState(false)
   const slideRefs = useRef<(HTMLDivElement | null)[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
@@ -51,19 +55,19 @@ export default function LandingPage() {
 
   // Auto-scroll every 6 seconds
   useEffect(() => {
-   if (videoPlaying) return
-   autoScrollRef.current = setInterval(() => {
-   setActiveSlide((prev) => {
-   const next = (prev + 1) % slides.length
-    scrollToSlide(next)
-    return next
-    })
-  }, 6000)
+    if (videoPlaying) return
+    autoScrollRef.current = setInterval(() => {
+      setActiveSlide((prev) => {
+        const next = (prev + 1) % slides.length
+        scrollToSlide(next)
+        return next
+      })
+    }, 6000)
 
-  return () => {
-    if (autoScrollRef.current) clearInterval(autoScrollRef.current)
-  }
-}, [scrollToSlide, videoPlaying])
+    return () => {
+      if (autoScrollRef.current) clearInterval(autoScrollRef.current)
+    }
+  }, [scrollToSlide, videoPlaying])
 
   // Intersection observer for active slide detection
   useEffect(() => {
@@ -74,7 +78,6 @@ export default function LandingPage() {
             const index = slideRefs.current.findIndex((ref) => ref === entry.target)
             if (index !== -1) {
               setActiveSlide(index)
-              // Reset auto-scroll timer
               if (autoScrollRef.current) clearInterval(autoScrollRef.current)
               autoScrollRef.current = setInterval(() => {
                 setActiveSlide((prev) => {
@@ -102,13 +105,57 @@ export default function LandingPage() {
     scrollToSlide(index)
   }
 
-  const formatName = (raw: string) =>
-  raw
-    .split(" ")
-    .filter(Boolean)
-    .map(word => word[0].toUpperCase() + word.slice(1).toLowerCase())
-    .join(" ")
+  // ── Sign In ──────────────────────────────────────────────────────────────
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoginError("")
 
+    if (!email.trim()) {
+      setLoginError("Please enter your email.")
+      return
+    }
+    if (!password.trim()) {
+      setLoginError("Please enter your password.")
+      return
+    }
+
+    setLoginLoading(true)
+    try {
+      const supabase = createClient()
+
+      const { data: user, error: dbError } = await supabase
+  .from("comm_user")
+  .select("*")
+  .eq("email", email.toLowerCase().trim())
+  .maybeSingle()
+
+
+
+if (dbError || !user) {
+  setLoginError("Unknown user. Please create an account first.")
+  return
+}
+       
+       console.log("User found:", user)
+     // Plain text password comparison (no bcrypt since password is not hashed)
+      const passwordValid = user.password === password
+
+     if (!passwordValid) {
+     setLoginError("Invalid email or password.")
+     return
+    }
+
+     // ✅ Use correct column names from your table
+     setUser({ name: user.username, email: user.email })
+     router.push("/dashboard")
+    }
+      catch (err) {
+      console.error("Sign-in error:", err)
+      setLoginError("Something went wrong. Please try again.")
+     } finally {
+       setLoginLoading(false)
+  }
+ }
 
   return (
     <div className="min-h-screen bg-background">
@@ -152,7 +199,7 @@ export default function LandingPage() {
         {/* Left slide content */}
         <div
           ref={containerRef}
-          className={`flex-1 lg:ml-14 lg:mr-[400px]  ${
+          className={`flex-1 lg:ml-14 lg:mr-[400px] ${
             videoPlaying ? "overflow-hidden" : "overflow-y-auto"
           }`}
         >
@@ -201,7 +248,6 @@ export default function LandingPage() {
             ref={(el) => { slideRefs.current[1] = el }}
             className="min-h-[calc(100vh-3.5rem)] flex flex-col justify-center px-6 md:px-12 lg:px-16"
           >
-            
             <div className="relative rounded-xl border border-border bg-card overflow-hidden aspect-video max-w-3xl">
               <video
                 className="h-full w-full object-cover"
@@ -211,22 +257,9 @@ export default function LandingPage() {
                 onPlay={() => setVideoPlaying(true)}
                 onPause={() => setVideoPlaying(false)}
                 onEnded={() => setVideoPlaying(false)}
-            >
-             <source src="/videos/RecruitAI_video.mp4" type="video/mp4" />
-            </video>
-            </div>
-
-            <div className="mt-8 flex flex-col gap-4 max-w-xl">
-              <div className="flex items-start gap-3">
-               { /*<div className="mt-1 size-5 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                  <div className="mt-1 size-5 rounded-full bg-primary/10 shrink-0" />
-                  </div>*/}
-                </div>
-              <div className="flex items-start gap-3">
-                {/*<div className="mt-1 size-5 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                  <div className="size-2 rounded-full bg-primary" />
-                  </div>*/}
-                </div>
+              >
+                <source src="/videos/RecruitAI_video.mp4" type="video/mp4" />
+              </video>
             </div>
           </div>
 
@@ -302,40 +335,15 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Right sticky sign-in panel */}
+        {/* ── Right sticky sign-in panel ── */}
         <div className="hidden lg:flex fixed right-0 top-14 bottom-0 w-[400px] border-l border-border bg-card flex-col justify-center px-10">
           <CardHeader className="px-0">
             <CardTitle className="text-2xl font-bold text-card-foreground">Sign in</CardTitle>
-           <p className="text-sm text-muted-foreground mt-1">
-            Welcome back to RecruitAI
-           </p>  
+            <p className="text-sm text-muted-foreground mt-1">Welcome back to RecruitAI</p>
           </CardHeader>
           <CardContent className="px-0">
-            <form
-              className="flex flex-col gap-4"
-              onSubmit={(e) => {
-                e.preventDefault()
-                setLoginError("")
-
-                 if (!email.trim()) {
-                 setLoginError("Please enter your email.")
-                 return
-                }
-               // "DB" of signed up users stored in localStorage
-                const raw = localStorage.getItem("recruitai-users")
-                const users: Array<{ name: string; email: string }> = raw ? JSON.parse(raw) : []
-                const found = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase())
-               // Case 1: user not signed up
-               if (!found) {
-                setLoginError("Unknown user. Please create an account first.")
-                 return
-              }
-        // Login success
-            setUser(found)
-            localStorage.setItem("recruitai-user", JSON.stringify(found))
-            router.push("/dashboard")}}
-              >
-
+            <form className="flex flex-col gap-4" onSubmit={handleSignIn}>
+              {/* Email */}
               <div className="flex flex-col gap-2">
                 <label htmlFor="landing-email" className="text-sm font-medium text-card-foreground">
                   Work email
@@ -346,10 +354,11 @@ export default function LandingPage() {
                   placeholder="you@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  required
                 />
-                {loginError && (
-                  <p className="text-sm text-destructive">{loginError}</p>)}
               </div>
+
+              {/* Password */}
               <div className="flex flex-col gap-2">
                 <label htmlFor="landing-password" className="text-sm font-medium text-card-foreground">
                   Password
@@ -359,7 +368,9 @@ export default function LandingPage() {
                     id="landing-password"
                     type={showPassword ? "text" : "password"}
                     placeholder="Enter your password"
-                    defaultValue="demo1234"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
                   />
                   <button
                     type="button"
@@ -371,10 +382,23 @@ export default function LandingPage() {
                   </button>
                 </div>
               </div>
-              <Button type="submit" className="w-full mt-2 bg-primary text-primary-foreground hover:bg-primary/90">
-                Sign in
+
+              {/* Error message */}
+              {loginError && (
+                <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-md">
+                  {loginError}
+                </p>
+              )}
+
+              <Button
+                type="submit"
+                className="w-full mt-2 bg-primary text-primary-foreground hover:bg-primary/90"
+                disabled={loginLoading}
+              >
+                {loginLoading ? "Signing in…" : "Sign in"}
               </Button>
             </form>
+
             <div className="mt-6 text-center">
               <p className="text-sm text-muted-foreground">
                 New here?{" "}

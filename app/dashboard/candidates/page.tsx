@@ -6,32 +6,14 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
 import {
-  Upload,
-  Search,
-  Sparkles,
-  ListChecks,
-  XCircle,
-  Eye,
-  ArrowUpDown,
-  ChevronLeft,
-  Brain,
-  BarChart3,
-  MessageSquare,
-  CalendarClock,
-  Shield,
-  FileText,
-  Files,
-  CheckCircle2,
-  X,
+  Upload, Search, Sparkles, ListChecks, XCircle, Eye, ArrowUpDown,
+  ChevronLeft, Brain, BarChart3, MessageSquare, CalendarClock, Shield,
+  FileText, Files, CheckCircle2, X,
 } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
 
 type CandidateStatus = "shortlisted" | "review" | "rejected"
 
@@ -63,7 +45,13 @@ type CandidateRow = {
   raw: RankedCandidate
 }
 
-const LS_KEY = "recruitai_ranked_candidates_v1"
+type Recruiter = {
+  username: string
+  email: string
+  first_name: string
+  last_name: string
+  company: string
+}
 
 function toCandidateRow(rc: RankedCandidate, idx: number): CandidateRow {
   const name = (rc.candidate_name || `Candidate ${idx + 1}`).trim()
@@ -75,9 +63,9 @@ function toCandidateRow(rc: RankedCandidate, idx: number): CandidateRow {
     (Array.isArray(rc.gaps) && rc.gaps.length > 0)
       ? `Top gap: ${rc.gaps[0]}`
       : (rc.recommendation ? `Recommendation: ${rc.recommendation}` : "AI assessed this candidate based on JD match and resume signals.")
- 
+
   return {
-    id: (rc.candidate_id || `cand_${idx}`),
+    id: rc.candidate_id || `cand_${idx}`,
     name,
     email: email || `${name.split(" ")[0].toLowerCase()}@example.com`,
     role,
@@ -91,15 +79,9 @@ function toCandidateRow(rc: RankedCandidate, idx: number): CandidateRow {
   }
 }
 
-// ── FileUploadButton component ───────────────────────────────────────────────
+// ── FileUploadButton ─────────────────────────────────────────────────────────
 function FileUploadButton({
-  label,
-  subLabel,
-  accept,
-  multiple = false,
-  icon: Icon,
-  files,
-  onChange,
+  label, subLabel, accept, multiple = false, icon: Icon, files, onChange,
 }: {
   label: string
   subLabel: string
@@ -118,10 +100,7 @@ function FileUploadButton({
     e.target.value = ""
   }
 
-  const removeFile = (idx: number) => {
-    onChange(files.filter((_, i) => i !== idx))
-  }
-
+  const removeFile = (idx: number) => onChange(files.filter((_, i) => i !== idx))
   const hasFiles = files.length > 0
 
   return (
@@ -136,43 +115,24 @@ function FileUploadButton({
             <p className="text-xs text-muted-foreground">{subLabel}</p>
           </div>
         </div>
-
         <Button
-          type="button"
-          variant="outline"
-          size="sm"
+          type="button" variant="outline" size="sm"
           onClick={() => inputRef.current?.click()}
           className="shrink-0 gap-2 border-primary/40 text-primary hover:bg-primary/5 hover:border-primary"
         >
           <Upload className="size-3.5" />
           {hasFiles ? (multiple ? "Add more" : "Replace") : "Choose file" + (multiple ? "s" : "")}
         </Button>
-
-        <input
-          ref={inputRef}
-          type="file"
-          accept={accept}
-          multiple={multiple}
-          onChange={handleChange}
-          className="hidden"
-        />
+        <input ref={inputRef} type="file" accept={accept} multiple={multiple} onChange={handleChange} className="hidden" />
       </div>
-
       {hasFiles && (
         <div className="flex flex-wrap gap-2 pl-12">
           {files.map((f, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted border border-border text-xs text-foreground"
-            >
+            <div key={`file-${i}-${f.name}`} className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted border border-border text-xs text-foreground">
               <FileText className="size-3 text-primary shrink-0" />
               <span className="max-w-[160px] truncate">{f.name}</span>
               <span className="text-muted-foreground">({(f.size / 1024).toFixed(0)} KB)</span>
-              <button
-                onClick={() => removeFile(i)}
-                className="ml-0.5 text-muted-foreground hover:text-destructive transition-colors"
-                title="Remove"
-              >
+              <button onClick={() => removeFile(i)} className="ml-0.5 text-muted-foreground hover:text-destructive transition-colors" title="Remove">
                 <X className="size-3" />
               </button>
             </div>
@@ -183,7 +143,7 @@ function FileUploadButton({
   )
 }
 
-// ── Main page ────────────────────────────────────────────────────────────────
+// ── Main Page ────────────────────────────────────────────────────────────────
 export default function CandidatesPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
@@ -191,23 +151,62 @@ export default function CandidatesPage() {
   const [showDetail, setShowDetail] = useState<string | null>(null)
   const [sortField, setSortField] = useState<"score" | "name">("score")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
-
   const [jdFile, setJdFile] = useState<File | null>(null)
   const [resumeFiles, setResumeFiles] = useState<File[]>([])
   const [isScoring, setIsScoring] = useState(false)
   const [scoreError, setScoreError] = useState<string | null>(null)
   const [candidateRows, setCandidateRows] = useState<CandidateRow[]>([])
+  const [recruiter, setRecruiter] = useState<Recruiter | null>(null)
 
+  // ── Helper: load candidates from comm_candidate ──────────────────────────
+  async function fetchCandidates() {
+    const supabase = createClient()
+    const { data: candidates } = await supabase
+      .from("comm_candidate")
+      .select("*")
+      .order("created_at", { ascending: false })
+
+    if (candidates && candidates.length > 0) {
+      setCandidateRows(
+        candidates.map((c: any) =>
+          toCandidateRow({
+            candidate_id: c.candidate_id || `db_${c.id}`,
+            candidate_name: c.candidate_name,
+            candidate_email: c.candidate_email,
+            phone: c.phone,
+            current_role: c.current_role,
+            score: c.score,
+            summary: c.summary,
+            strengths: c.strengths,
+            gaps: c.gaps,
+            recommendation: c.recommendation,
+            email_draft: { subject: c.email_subject, body: c.email_body },
+          }, c.id)
+        )
+      )
+    }
+  }
+
+  // ── Load recruiter + candidates on mount ─────────────────────────────────
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(LS_KEY)
-      if (!raw) return
-      const parsed = JSON.parse(raw)
-      const ranked: RankedCandidate[] = parsed?.ranked_candidates || parsed || []
-      if (Array.isArray(ranked) && ranked.length) {
-        setCandidateRows(ranked.map(toCandidateRow))
-      }
-    } catch { /* ignore */ }
+    async function loadData() {
+      const supabase = createClient()
+
+      const stored = localStorage.getItem("recruitai-user")
+      if (!stored) return
+      const { email } = JSON.parse(stored)
+
+      const { data: userData } = await supabase
+        .from("comm_user")
+        .select("username, email, first_name, last_name, company")
+        .eq("email", email)
+        .maybeSingle()
+
+      if (userData) setRecruiter(userData)
+
+      await fetchCandidates()
+    }
+    loadData()
   }, [])
 
   const filtered = useMemo(() => {
@@ -234,63 +233,68 @@ export default function CandidatesPage() {
     }
   }
 
-  const setStatus = (id: string, status: CandidateStatus) => {
+  // ── Update status in Supabase + local state ──────────────────────────────
+  const setStatus = async (id: string, status: CandidateStatus) => {
+    const supabase = createClient()
+    await supabase
+      .from("comm_candidate")
+      .update({ status })
+      .eq("candidate_id", id)
+
     setCandidateRows((prev) => prev.map((c) => (c.id === id ? { ...c, status } : c)))
   }
 
+  // ── Run Scoring ──────────────────────────────────────────────────────────
   async function runScoring() {
-  setScoreError(null)
-  if (!jdFile) { setScoreError("Please upload a JD file first."); return }
-  if (!resumeFiles.length) { setScoreError("Please upload at least 1 resume (3–5 recommended)."); return }
+    setScoreError(null)
+    if (!jdFile) { setScoreError("Please upload a JD file first."); return }
+    if (!resumeFiles.length) { setScoreError("Please upload at least 1 resume (3–5 recommended)."); return }
 
-  setIsScoring(true)
-  try {
-    const fd = new FormData()
-    fd.append("recruiter_name", "Recruiter")
-    fd.append("recruiter_email", "recruiter@example.com")
-    fd.append("company", "Acme Inc")
-    fd.append("job_title", "Position")
-    fd.append("JD", jdFile)
-    resumeFiles.forEach((f, i) => fd.append(`resume_${i}`, f))
-
-    const r = await fetch("/api/score", { method: "POST", body: fd })
-
-    // ✅ Read as text first, then parse
-    const rawText = await r.text()
-
-    if (!rawText || rawText.trim() === "") {
-      throw new Error("Server returned empty response — check n8n workflow is active")
-    }
-
-    let data
+    setIsScoring(true)
     try {
-     // data = JSON.parse(rawText)
-       data = Array.isArray(rawText) ? JSON.parse(rawText[0]) : JSON.parse(rawText);
-    } catch {
-      throw new Error(`Server returned non-JSON: ${rawText.slice(0, 200)}`)
+      const fd = new FormData()
+      fd.append("recruiter_name", recruiter ? `${recruiter.first_name} ${recruiter.last_name}`.trim() : "Recruiter")
+      fd.append("recruiter_email", recruiter?.email || "recruiter@example.com")
+      fd.append("company", recruiter?.company || "")
+      fd.append("job_title", "Position")
+      fd.append("job_id", `JOB-${Date.now()}`)
+      fd.append("JD", jdFile)
+      resumeFiles.forEach((f, i) => fd.append(`resume_${i}`, f))
+
+      const r = await fetch("/api/score", { method: "POST", body: fd })
+      const rawText = await r.text()
+
+      if (!rawText || rawText.trim() === "") {
+        throw new Error("Server returned empty response — check n8n workflow is active")
+      }
+
+      let data
+      try {
+        data = Array.isArray(rawText) ? JSON.parse(rawText[0]) : JSON.parse(rawText)
+      } catch {
+        throw new Error(`Server returned non-JSON: ${rawText.slice(0, 200)}`)
+      }
+
+      if (!r.ok) {
+        throw new Error(data?.error || data?.message || `Request failed with status ${r.status}`)
+      }
+
+      const ranked = data?.ranked_candidates || []
+      if (!Array.isArray(ranked) || ranked.length === 0) {
+        throw new Error("No ranked_candidates returned — check n8n Respond to Webhook node")
+      }
+
+      await fetchCandidates()
+      setShowUpload(false)
+
+    } catch (e: any) {
+      setScoreError(e?.message || String(e))
+    } finally {
+      setIsScoring(false)
     }
-
-    if (!r.ok) {
-      throw new Error(data?.error || data?.message || `Request failed with status ${r.status}`)
-    }
-
-    const ranked = data?.ranked_candidates || []
-    if (!Array.isArray(ranked) || ranked.length === 0) {
-      throw new Error("No ranked_candidates returned — check n8n Respond to Webhook node")
-    }
-
-    localStorage.setItem(LS_KEY, JSON.stringify({ ranked_candidates: ranked }))
-    setCandidateRows(ranked.map(toCandidateRow))
-    setShowUpload(false)
-
-  } catch (e: any) {
-    setScoreError(e?.message || String(e))
-  } finally {
-    setIsScoring(false)
   }
-}
 
-  // ── Detail view ──────────────────────────────────────────────────────────
+  // ── Detail View ──────────────────────────────────────────────────────────
   if (selectedCandidate) {
     return (
       <div className="flex flex-col gap-6">
@@ -298,7 +302,6 @@ export default function CandidatesPage() {
           <ChevronLeft className="size-4 mr-1" />
           Back to candidates
         </Button>
-
         <div className="flex flex-col lg:flex-row gap-6">
           <div className="flex-1 flex flex-col gap-6">
             <Card className="border-border">
@@ -362,9 +365,11 @@ export default function CandidatesPage() {
               <CardContent>
                 <div className="flex flex-col gap-2 text-sm text-muted-foreground">
                   {(selectedCandidate.raw.strengths || []).slice(0, 6).map((s, i) => (
-                    <div key={i} className="rounded-md border border-border p-2">{s}</div>
+                    <div key={`strength-${selectedCandidate.id}-${i}`} className="rounded-md border border-border p-2">{s}</div>
                   ))}
-                  {(!selectedCandidate.raw.strengths || selectedCandidate.raw.strengths.length === 0) && <div className="text-xs">—</div>}
+                  {(!selectedCandidate.raw.strengths || selectedCandidate.raw.strengths.length === 0) && (
+                    <div className="text-xs">—</div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -388,29 +393,31 @@ export default function CandidatesPage() {
     )
   }
 
-  // ── List view ────────────────────────────────────────────────────────────
+  // ── List View ────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Candidates</h1>
-          <p className="text-muted-foreground text-sm mt-1">AI-ranked candidates across all roles.</p>
+          <p className="text-muted-foreground text-sm mt-1">
+            AI-ranked candidates across all roles.
+            {recruiter && (
+              <span className="ml-2 text-primary font-medium">
+                · {recruiter.first_name} {recruiter.last_name}
+                {recruiter.company && ` · ${recruiter.company}`}
+              </span>
+            )}
+          </p>
         </div>
-        <Button
-          onClick={() => setShowUpload(!showUpload)}
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-        >
+        <Button onClick={() => setShowUpload(!showUpload)} className="bg-primary text-primary-foreground hover:bg-primary/90">
           <Upload className="size-4 mr-1" />
           Upload Resumes
         </Button>
       </div>
 
-      {/* Upload panel */}
       {showUpload && (
         <Card className="border-border">
           <CardContent className="pt-6 flex flex-col gap-5">
-
-            {/* Step 1 – JD */}
             <div className="rounded-lg border border-border bg-muted/30 p-4">
               <div className="flex items-center gap-2 mb-3">
                 <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary text-primary-foreground text-[11px] font-bold shrink-0">1</span>
@@ -427,7 +434,6 @@ export default function CandidatesPage() {
               />
             </div>
 
-            {/* Step 2 – Resumes */}
             <div className="rounded-lg border border-border bg-muted/30 p-4">
               <div className="flex items-center gap-2 mb-3">
                 <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary text-primary-foreground text-[11px] font-bold shrink-0">2</span>
@@ -447,7 +453,6 @@ export default function CandidatesPage() {
               />
             </div>
 
-            {/* Error */}
             {scoreError && (
               <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/5 border border-destructive/20 rounded-lg px-4 py-2.5">
                 <XCircle className="size-4 shrink-0" />
@@ -455,7 +460,6 @@ export default function CandidatesPage() {
               </div>
             )}
 
-            {/* Run button */}
             <div className="flex flex-col gap-2">
               <Button
                 onClick={runScoring}
@@ -467,14 +471,13 @@ export default function CandidatesPage() {
               </Button>
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Sparkles className="size-3.5 text-primary" />
-                Uploads go to Vercel → n8n Workflow A → candidates update automatically
+                Files sent to n8n → results saved to Supabase → candidates update automatically
               </p>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
@@ -486,9 +489,9 @@ export default function CandidatesPage() {
           />
         </div>
         <div className="flex gap-2">
-          {["all", "shortlisted", "review", "rejected"].map((status) => (
+          {["all", "shortlisted", "review", "rejected"].map((status, i) => (
             <Button
-              key={status}
+              key={`filter-${status}-${i}`}
               variant={statusFilter === status ? "default" : "outline"}
               size="sm"
               onClick={() => setStatusFilter(status)}
@@ -500,7 +503,6 @@ export default function CandidatesPage() {
         </div>
       </div>
 
-      {/* Candidates table */}
       <Card className="border-border">
         <CardContent className="p-0">
           <Table>
@@ -523,8 +525,8 @@ export default function CandidatesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((candidate) => (
-                <TableRow key={candidate.id}>
+              {filtered.map((candidate, rowIdx) => (
+                <TableRow key={`row-${candidate.id}-${rowIdx}`}>
                   <TableCell>
                     <div>
                       <p className="font-medium text-foreground">{candidate.name}</p>
@@ -538,8 +540,8 @@ export default function CandidatesPage() {
                   </TableCell>
                   <TableCell className="hidden md:table-cell">
                     <div className="flex flex-wrap gap-1">
-                      {candidate.skills.slice(0, 3).map((skill) => (
-                        <Badge key={skill} variant="outline" className="text-xs font-normal">{skill}</Badge>
+                      {candidate.skills.slice(0, 3).map((skill, i) => (
+                        <Badge key={`${candidate.id}-skill-${i}`} variant="outline" className="text-xs font-normal">{skill}</Badge>
                       ))}
                     </div>
                   </TableCell>
@@ -567,9 +569,8 @@ export default function CandidatesPage() {
                   </TableCell>
                 </TableRow>
               ))}
-
               {filtered.length === 0 && (
-                <TableRow>
+                <TableRow key="empty-row">
                   <TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-10">
                     No candidates yet. Upload JD + resumes and run AI scoring.
                   </TableCell>

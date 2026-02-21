@@ -1,23 +1,71 @@
 "use client"
 
-import React from "react"
-
-import { useState } from "react"
+import React, { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Eye, EyeOff } from "lucide-react"
-
-
+import { createClient } from "@/lib/supabase/client"
+import bcrypt from "bcryptjs"
 
 export default function LoginPage() {
   const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    router.push("/dashboard")
+    setError(null)
+    setLoading(true)
+
+    try {
+      const supabase = createClient()
+
+      // Query comm_user table for matching email
+      const { data: user, error: dbError } = await supabase
+        .from("comm_user")
+        .select("*")
+        .eq("email", email.toLowerCase().trim())
+        .maybeSingle()
+
+        console.log(email.toLowerCase());
+      if (dbError || !user) {
+        setError("Invalid email or password.")
+        return
+      }
+
+      // Validate password — supports both bcrypt hashes and plain text (dev only)
+      let passwordValid = false
+
+      if (user.password?.startsWith("$2")) {
+        // bcrypt hash
+        passwordValid = await bcrypt.compare(password, user.password)
+      } else {
+        // Plain text comparison (not recommended for production)
+        passwordValid = user.password === password
+      }
+
+      if (!passwordValid) {
+        setError("Invalid email or password.")
+        return
+      }
+
+      // Optionally store session info (e.g. in localStorage or a cookie)
+      // For a full auth flow you'd set a session here
+      localStorage.setItem("user_id", user.id)
+      localStorage.setItem("user_email", user.email)
+
+      router.push("/dashboard")
+    } catch (err) {
+      console.error("Login error:", err)
+      setError("Something went wrong. Please try again.")
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -38,7 +86,8 @@ export default function LoginPage() {
             id="email"
             type="email"
             placeholder="you@company.com"
-            defaultValue="demo@recruitai.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             required
           />
         </div>
@@ -52,7 +101,8 @@ export default function LoginPage() {
               id="password"
               type={showPassword ? "text" : "password"}
               placeholder="Enter your password"
-              defaultValue="demo1234"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               required
             />
             <button
@@ -66,8 +116,18 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <Button type="submit" className="w-full mt-2 bg-primary text-primary-foreground hover:bg-primary/90">
-          Log in
+        {error && (
+          <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-md">
+            {error}
+          </p>
+        )}
+
+        <Button
+          type="submit"
+          className="w-full mt-2 bg-primary text-primary-foreground hover:bg-primary/90"
+          disabled={loading}
+        >
+          {loading ? "Signing in…" : "Log in"}
         </Button>
       </form>
 
