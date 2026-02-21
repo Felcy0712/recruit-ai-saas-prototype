@@ -154,12 +154,14 @@ export default function CandidatesPage() {
   const [jdFile, setJdFile] = useState<File | null>(null)
   const [resumeFiles, setResumeFiles] = useState<File[]>([])
   const [isScoring, setIsScoring] = useState(false)
+  const [scoringStatus, setScoringStatus] = useState<string>("")
   const [scoreError, setScoreError] = useState<string | null>(null)
   const [candidateRows, setCandidateRows] = useState<CandidateRow[]>([])
   const [recruiter, setRecruiter] = useState<Recruiter | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // ── Helper: load candidates from comm_candidate ──────────────────────────
-  async function fetchCandidates() {
+  async function fetchCandidates(): Promise<number> {
     const supabase = createClient()
     const { data: candidates } = await supabase
       .from("comm_candidate")
@@ -184,7 +186,9 @@ export default function CandidatesPage() {
           }, c.id)
         )
       )
+      return candidates.length
     }
+    return 0
   }
 
   // ── Load recruiter + candidates on mount ─────────────────────────────────
@@ -203,10 +207,14 @@ export default function CandidatesPage() {
         .maybeSingle()
 
       if (userData) setRecruiter(userData)
-
       await fetchCandidates()
     }
     loadData()
+
+    // Cleanup polling on unmount
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
+    }
   }, [])
 
   const filtered = useMemo(() => {
@@ -247,10 +255,13 @@ export default function CandidatesPage() {
   // ── Run Scoring ──────────────────────────────────────────────────────────
   async function runScoring() {
     setScoreError(null)
+    setScoringStatus("")
     if (!jdFile) { setScoreError("Please upload a JD file first."); return }
     if (!resumeFiles.length) { setScoreError("Please upload at least 1 resume (3–5 recommended)."); return }
 
     setIsScoring(true)
+    setScoringStatus("Sending files to AI...")
+
     try {
       const fd = new FormData()
       fd.append("recruiter_name", recruiter ? `${recruiter.first_name} ${recruiter.last_name}`.trim() : "Recruiter")
@@ -261,36 +272,42 @@ export default function CandidatesPage() {
       fd.append("JD", jdFile)
       resumeFiles.forEach((f, i) => fd.append(`resume_${i}`, f))
 
-      const r = await fetch("/api/score", { method: "POST", body: fd })
-      const rawText = await r.text()
+      // ✅ Fire and forget — don't await full response
+      fetch("/api/score", { method: "POST", body: fd }).catch(() => {})
 
-      if (!rawText || rawText.trim() === "") {
-        throw new Error("Server returned empty response — check n8n workflow is active")
-      }
+      setScoringStatus("AI is analysing resumes... this may take a minute.")
 
-      let data
-      try {
-        data = Array.isArray(rawText) ? JSON.parse(rawText[0]) : JSON.parse(rawText)
-      } catch {
-        throw new Error(`Server returned non-JSON: ${rawText.slice(0, 200)}`)
-      }
+      // ✅ Poll Supabase every 5 seconds for new candidates
+      const previousCount = candidateRows.length
+      let attempts = 0
 
-      if (!r.ok) {
-        throw new Error(data?.error || data?.message || `Request failed with status ${r.status}`)
-      }
+      if (pollRef.current) clearInterval(pollRef.current)
 
-      const ranked = data?.ranked_candidates || []
-      if (!Array.isArray(ranked) || ranked.length === 0) {
-        throw new Error("No ranked_candidates returned — check n8n Respond to Webhook node")
-      }
+      pollRef.current = setInterval(async () => {
+        attempts++
+        const newCount = await fetchCandidates()
 
-      await fetchCandidates()
-      setShowUpload(false)
+        if (newCount > previousCount) {
+          // New candidates found
+          if (pollRef.current) clearInterval(pollRef.current)
+          setScoringStatus("")
+          setShowUpload(false)
+          setIsScoring(false)
+        }
+
+        if (attempts >= 60) {
+          // Timed out after 5 minutes
+          if (pollRef.current) clearInterval(pollRef.current)
+          setIsScoring(false)
+          setScoringStatus("")
+          setScoreError("Scoring is taking longer than expected. Please refresh the page to see results.")
+        }
+      }, 5000)
 
     } catch (e: any) {
       setScoreError(e?.message || String(e))
-    } finally {
       setIsScoring(false)
+      setScoringStatus("")
     }
   }
 
@@ -457,6 +474,14 @@ export default function CandidatesPage() {
               <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/5 border border-destructive/20 rounded-lg px-4 py-2.5">
                 <XCircle className="size-4 shrink-0" />
                 {scoreError}
+              </div>
+            )}
+
+            {/* Scoring status message */}
+            {scoringStatus && (
+              <div className="flex items-center gap-2 text-sm text-primary bg-primary/5 border border-primary/20 rounded-lg px-4 py-2.5">
+                <Sparkles className="size-4 shrink-0 animate-pulse" />
+                {scoringStatus}
               </div>
             )}
 

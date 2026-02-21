@@ -3,7 +3,7 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 const pdf = require("pdf-parse");
 const mammoth = require("mammoth");
