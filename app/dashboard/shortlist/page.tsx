@@ -10,85 +10,78 @@ import {
   Sparkles,
   Shield,
   MessageSquare,
+  Loader2,
 } from "lucide-react"
 import Link from "next/link"
-
-const LS_CANDIDATES_KEY = "recruitai_ranked_candidates_v1"
-
-type RankedCandidate = {
-  candidate_id?: string
-  candidate_name?: string
-  candidate_email?: string
-  phone?: string
-  current_role?: string
-  current_company?: string
-  years_of_experience?: number
-  score?: number
-  rank?: number
-  summary?: string
-  strengths?: string[]
-  gaps?: string[]
-  recommendation?: string
-  email_draft?: { subject?: string; body?: string }
-}
+import { createClient } from "@/lib/supabase/client"
 
 type ShortlistedCandidate = {
   id: string
   name: string
   email: string
   role: string
+  current_company: string
   experience: string
   score: number
   skills: string[]
-  raw: RankedCandidate
-}
-
-function toShortlisted(rc: RankedCandidate, idx: number): ShortlistedCandidate {
-  return {
-    id: rc.candidate_id || `cand_${idx}`,
-    name: (rc.candidate_name || `Candidate ${idx + 1}`).trim(),
-    email: (rc.candidate_email || "").trim(),
-    role: (rc.current_role || "Candidate").trim(),
-    experience: rc.years_of_experience ? `${rc.years_of_experience} yrs` : "—",
-    score: typeof rc.score === "number" ? rc.score : 0,
-    skills: Array.isArray(rc.strengths)
-      ? rc.strengths.slice(0, 4).map((s) => s.slice(0, 24))
-      : [],
-    raw: rc,
-  }
+  gaps: string[]
+  recommendation: string
 }
 
 export default function ShortlistPage() {
   const [candidates, setCandidates] = useState<ShortlistedCandidate[]>([])
   const [order, setOrder] = useState<string[]>([])
   const [tags, setTags] = useState<Record<string, string[]>>({})
-  const [topTwo, setTopTwo] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(LS_CANDIDATES_KEY)
-      const statusMap: Record<string, string> = raw ? JSON.parse(raw) : {}
-      if (!raw) return
-      const saved = JSON.parse(raw)
-      const ranked: RankedCandidate[] = saved?.ranked_candidates || []
+    async function load() {
+      setLoading(true)
+      const supabase = createClient()
 
-      // Show all ranked candidates sorted by score descending
-      const all = ranked
-        .map((rc, i) => toShortlisted(rc, i))
-        .filter((c) => c.score >= 85)
-        .sort((a, b) => b.score - a.score)
+      const { data, error } = await supabase
+        .from("comm_candidate")
+        .select("*")
+        .gte("score", 85)
+        .order("score", { ascending: false })
 
-      setCandidates(all)
-      setOrder(all.map((c) => c.id))
-      setTopTwo(all.slice(0, 2).map((c) => c.name))
-    } catch {
-      /* ignore */
+      if (error) {
+        console.error("Supabase shortlist error:", error)
+        setLoading(false)
+        return
+      }
+
+      if (data && data.length > 0) {
+        const mapped: ShortlistedCandidate[] = data.map((c: any) => ({
+          id: c.candidate_id || `db_${c.id}`,
+          name: (c.candidate_name || "Unknown").trim(),
+          email: (c.candidate_email || "").trim(),
+          role: (c.current_role || "Candidate").trim(),
+          current_company: c.current_company || "",
+          experience: c.years_of_experience ? `${c.years_of_experience} yrs` : "—",
+          score: typeof c.score === "number" ? c.score : 0,
+          skills: Array.isArray(c.strengths)
+            ? c.strengths.slice(0, 4).map((s: string) => s.slice(0, 24))
+            : [],
+          gaps: Array.isArray(c.gaps) ? c.gaps : [],
+          recommendation: c.recommendation || "",
+        }))
+
+        setCandidates(mapped)
+        setOrder(mapped.map((c) => c.id))
+      }
+
+      setLoading(false)
     }
+
+    load()
   }, [])
 
   const orderedCandidates = order
     .map((id) => candidates.find((c) => c.id === id))
     .filter(Boolean) as ShortlistedCandidate[]
+
+  const topTwo = orderedCandidates.slice(0, 2).map((c) => c.name)
 
   const moveUp = (index: number) => {
     if (index === 0) return
@@ -119,7 +112,22 @@ export default function ShortlistPage() {
     }))
   }
 
-  // ── Empty state ────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Shortlist</h1>
+          <p className="text-muted-foreground text-sm mt-1">Rank and compare your top candidates.</p>
+        </div>
+        <Card className="border-border">
+          <CardContent className="py-16 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" />
+            Loading shortlisted candidates...
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   if (candidates.length === 0) {
     return (
@@ -130,7 +138,7 @@ export default function ShortlistPage() {
         </div>
         <Card className="border-border">
           <CardContent className="py-16 text-center text-muted-foreground text-sm">
-            No candidates scored yet.{" "}
+            No candidates scored ≥ 85% yet.{" "}
             <Link href="/dashboard/candidates" className="text-primary underline underline-offset-2">
               Go to Candidates
             </Link>{" "}
@@ -141,15 +149,13 @@ export default function ShortlistPage() {
     )
   }
 
-  // ── Main view ──────────────────────────────────────────────────────────────
-
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Shortlist</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            {orderedCandidates.length} candidate{orderedCandidates.length !== 1 ? "s" : ""} ranked · Drag to reorder your top picks.
+            {orderedCandidates.length} candidate{orderedCandidates.length !== 1 ? "s" : ""} ranked · Use arrows to reorder your top picks.
           </p>
         </div>
         <Link href="/dashboard/scheduling">
@@ -160,7 +166,6 @@ export default function ShortlistPage() {
         </Link>
       </div>
 
-      {/* AI recommendation */}
       {topTwo.length > 0 && (
         <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 flex items-center gap-4">
           <div className="size-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
@@ -178,7 +183,7 @@ export default function ShortlistPage() {
               first.
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Based on highest AI scores among all ranked candidates.
+              Based on highest AI scores among all shortlisted candidates.
             </p>
           </div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
@@ -188,13 +193,11 @@ export default function ShortlistPage() {
         </div>
       )}
 
-      {/* Ranked list */}
       <div className="flex flex-col gap-3">
         {orderedCandidates.map((candidate, index) => (
           <Card key={candidate.id} className="border-border">
             <CardContent className="pt-4 pb-4">
               <div className="flex items-center gap-4">
-                {/* Rank controls */}
                 <div className="flex items-center gap-2 shrink-0">
                   <div className="flex flex-col gap-0.5">
                     <button
@@ -223,7 +226,6 @@ export default function ShortlistPage() {
                   </span>
                 </div>
 
-                {/* Candidate info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 flex-wrap">
                     <h3 className="font-semibold text-foreground">{candidate.name}</h3>
@@ -234,15 +236,15 @@ export default function ShortlistPage() {
                     }`}>
                       {candidate.score}%
                     </span>
-                    {candidate.raw.recommendation && (
+                    {candidate.recommendation && (
                       <Badge variant="outline" className="text-xs text-primary border-primary/40">
-                        {candidate.raw.recommendation}
+                        {candidate.recommendation}
                       </Badge>
                     )}
                   </div>
                   <p className="text-sm text-muted-foreground">
                     {candidate.role}
-                    {candidate.raw.current_company && ` · ${candidate.raw.current_company}`}
+                    {candidate.current_company && ` · ${candidate.current_company}`}
                     {candidate.experience !== "—" && ` · ${candidate.experience}`}
                   </p>
                   {candidate.email && (
@@ -268,7 +270,6 @@ export default function ShortlistPage() {
                   </div>
                 </div>
 
-                {/* Tag button */}
                 <div className="shrink-0">
                   <Button
                     variant="outline"
@@ -289,7 +290,6 @@ export default function ShortlistPage() {
         ))}
       </div>
 
-      {/* Comparison table */}
       <Card className="border-border">
         <CardHeader>
           <CardTitle className="text-foreground flex items-center gap-2">
@@ -335,17 +335,17 @@ export default function ShortlistPage() {
                         )}
                         {criteria === "Recommendation" && (
                           <span className={`text-xs font-medium ${
-                            c.raw.recommendation === "Strong Yes" ? "text-emerald-500"
-                            : c.raw.recommendation === "Yes" ? "text-amber-500"
-                            : c.raw.recommendation === "Maybe" ? "text-orange-500"
+                            c.recommendation === "Strong Yes" ? "text-emerald-500"
+                            : c.recommendation === "Yes" ? "text-amber-500"
+                            : c.recommendation === "Maybe" ? "text-orange-500"
                             : "text-red-500"
                           }`}>
-                            {c.raw.recommendation || "—"}
+                            {c.recommendation || "—"}
                           </span>
                         )}
                         {criteria === "Gaps" && (
                           <span className="text-xs text-muted-foreground">
-                            {c.raw.gaps?.length ?? 0} gap{(c.raw.gaps?.length ?? 0) !== 1 ? "s" : ""}
+                            {c.gaps.length} gap{c.gaps.length !== 1 ? "s" : ""}
                           </span>
                         )}
                       </td>
