@@ -28,10 +28,11 @@ const navItems = [
 export function AppSidebar() {
   const { user, setUser } = useUser()
   const pathname = usePathname()
+
   const handleLogout = () => {
-  localStorage.removeItem("recruitai-user")
-  setUser(null as any)
-  window.location.href = "/"
+    localStorage.removeItem("recruitai-user")
+    setUser(null as any)
+    window.location.href = "/"
   }
 
   return (
@@ -39,11 +40,14 @@ export function AppSidebar() {
       <div className="h-14 flex items-center px-5 border-b border-sidebar-border">
         <Link href="/dashboard">
           <RecruitLogo className="sidebar" />
-         </Link>
+        </Link>
       </div>
+
       <nav className="flex-1 py-4 px-3 flex flex-col gap-1">
         {navItems.map((item) => {
-          const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href))
+          const isActive =
+            pathname === item.href ||
+            (item.href !== "/dashboard" && pathname.startsWith(item.href))
           return (
             <Link
               key={item.href}
@@ -61,21 +65,21 @@ export function AppSidebar() {
           )
         })}
       </nav>
+
+      {/* ── Bottom user section — avatar + name + logout only ── */}
       <div className="p-4 border-t border-sidebar-border">
         <div className="flex items-center gap-3">
-          <div className="size-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-semibold">
+          <div className="size-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-semibold shrink-0">
             {user?.name?.trim()?.[0]?.toUpperCase() ?? "?"}
           </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium text-sidebar-foreground">{user?.name ?? "Guest"}</span>
-            <span className="text-xs text-muted-foreground">{user?.email ?? ""}</span>
-            <button onClick={handleLogout}
-             className="mt-1 text-xs text-muted-foreground hover:text-sidebar-foreground text-left">
-             Logout
-           </button>
-          </div>
+          <button
+            onClick={handleLogout}
+            className="text-xs text-muted-foreground hover:text-sidebar-foreground text-left transition-colors"
+          >
+            Logout
+          </button>
         </div>
       </div>
-    </aside>
+      </aside>
   )
 }
