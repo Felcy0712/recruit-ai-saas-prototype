@@ -7,23 +7,14 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
   CalendarClock, Mail, Check, AlertCircle, Send, Shield,
-  User, ChevronLeft, ChevronRight,
+  User, ChevronLeft, ChevronRight, Loader2,
 } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
 
-const LS_CANDIDATES_KEY = "recruitai_ranked_candidates_v1"
-const LS_SHORTLIST_KEY = "recruitai_shortlist_status_v1"
 const LS_SCHEDULE_KEY = "recruitai_schedule_v1"
 
 const WEEK_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 const TIME_SLOTS = ["9:00 AM", "10:00 AM", "11:00 AM", "1:00 PM", "2:00 PM", "3:00 PM"]
-
-type RankedCandidate = {
-  candidate_id?: string
-  candidate_name?: string
-  candidate_email?: string
-  score?: number
-  current_role?: string
-}
 
 type ShortlistedCandidate = {
   id: string
@@ -72,13 +63,12 @@ export default function SchedulingPage() {
   const { user } = useUser()
 
   const [shortlisted, setShortlisted] = useState<ShortlistedCandidate[]>([])
+  const [loading, setLoading] = useState(true)
   const [schedule, setSchedule] = useState<ScheduledSlot[]>([])
   const [weekStart, setWeekStart] = useState<Date>(getMonday(new Date()))
-
   const [selectedCandidate, setSelectedCandidate] = useState<ShortlistedCandidate | null>(null)
   const [showEmailPreview, setShowEmailPreview] = useState(false)
   const [previewSlot, setPreviewSlot] = useState<ScheduledSlot | null>(null)
-
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
   const [sendError, setSendError] = useState("")
@@ -86,37 +76,36 @@ export default function SchedulingPage() {
   const recruiterName = user?.name || "Recruiter"
   const recruiterEmail = (user as any)?.email || "recruiter@example.com"
   const recruiterCompany = user?.company || "Acme Inc"
-
   const weekDates = getWeekDates(weekStart)
 
-  // Load shortlisted candidates (score >= 85)
+  // ── Fetch shortlisted candidates from Supabase (score >= 85) ─────────────
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(LS_CANDIDATES_KEY)
-      if (!raw) return
-      const saved = JSON.parse(raw)
-      const ranked: RankedCandidate[] = saved?.ranked_candidates || []
+    async function load() {
+      setLoading(true)
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from("comm_candidate")
+        .select("*")
+        .gte("score", 85)
+        .order("score", { ascending: false })
 
-      const statusRaw = localStorage.getItem(LS_SHORTLIST_KEY)
-      const statusMap: Record<string, string> = statusRaw ? JSON.parse(statusRaw) : {}
-      const hasStatus = Object.keys(statusMap).length > 0
-
-      const filtered = ranked
-        .map((rc, i) => ({
-          id: rc.candidate_id || `cand_${i}`,
-          name: (rc.candidate_name || `Candidate ${i + 1}`).trim(),
-          email: (rc.candidate_email || "").trim(),
-          role: (rc.current_role || "Candidate").trim(),
-          score: typeof rc.score === "number" ? rc.score : 0,
-        }))
-        .filter((c) => c.score >= 85 && (!hasStatus || statusMap[c.id] === "shortlisted"))
-        .sort((a, b) => b.score - a.score)
-
-      setShortlisted(filtered)
-    } catch { /* ignore */ }
+      if (!error && data && data.length > 0) {
+        setShortlisted(
+          data.map((c: any) => ({
+            id: c.candidate_id || `db_${c.id}`,
+            name: (c.candidate_name || "Unknown").trim(),
+            email: (c.candidate_email || "").trim(),
+            role: (c.current_role || "Candidate").trim(),
+            score: typeof c.score === "number" ? c.score : 0,
+          }))
+        )
+      }
+      setLoading(false)
+    }
+    load()
   }, [])
 
-  // Load saved schedule
+  // ── Load saved schedule from localStorage ─────────────────────────────────
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS_SCHEDULE_KEY)
@@ -169,7 +158,6 @@ export default function SchedulingPage() {
   const upcomingInterviews = [...schedule]
     .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))
 
-  // Email content
   const emailSubject = previewSlot
     ? `Interview Invitation for ${previewSlot.candidateName}`
     : ""
@@ -183,7 +171,6 @@ export default function SchedulingPage() {
     setSending(true)
     setSent(false)
     setSendError("")
-
     try {
       const res = await fetch("/api/invite", {
         method: "POST",
@@ -201,7 +188,6 @@ export default function SchedulingPage() {
           email_body: emailBody,
         }),
       })
-
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setSendError(data?.error || "Invite failed")
@@ -218,6 +204,7 @@ export default function SchedulingPage() {
 
   return (
     <div className="flex flex-col gap-6">
+
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">Scheduling</h1>
@@ -236,7 +223,12 @@ export default function SchedulingPage() {
       </div>
 
       {/* Candidate selector */}
-      {shortlisted.length > 0 && (
+      {loading ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" />
+          Loading shortlisted candidates...
+        </div>
+      ) : shortlisted.length > 0 ? (
         <div className="flex flex-wrap gap-2 items-center">
           <span className="text-sm text-muted-foreground mr-1">Book slot for:</span>
           {shortlisted.map((c) => (
@@ -262,9 +254,7 @@ export default function SchedulingPage() {
             </span>
           )}
         </div>
-      )}
-
-      {shortlisted.length === 0 && (
+      ) : (
         <Card className="border-border">
           <CardContent className="py-10 text-center text-sm text-muted-foreground">
             No shortlisted candidates with score ≥ 85% found.{" "}
@@ -286,16 +276,12 @@ export default function SchedulingPage() {
               {formatWeekLabel(weekStart)}
             </CardTitle>
             <div className="flex items-center gap-1">
-              <Button
-                variant="ghost" size="icon" className="size-8"
-                onClick={() => { const d = new Date(weekStart); d.setDate(d.getDate() - 7); setWeekStart(d) }}
-              >
+              <Button variant="ghost" size="icon" className="size-8"
+                onClick={() => { const d = new Date(weekStart); d.setDate(d.getDate() - 7); setWeekStart(d) }}>
                 <ChevronLeft className="size-4 text-foreground" />
               </Button>
-              <Button
-                variant="ghost" size="icon" className="size-8"
-                onClick={() => { const d = new Date(weekStart); d.setDate(d.getDate() + 7); setWeekStart(d) }}
-              >
+              <Button variant="ghost" size="icon" className="size-8"
+                onClick={() => { const d = new Date(weekStart); d.setDate(d.getDate() + 7); setWeekStart(d) }}>
                 <ChevronRight className="size-4 text-foreground" />
               </Button>
             </div>
@@ -304,15 +290,12 @@ export default function SchedulingPage() {
           <CardContent>
             <div className="overflow-x-auto">
               <div className="grid grid-cols-5 gap-px min-w-[600px]">
-                {/* Day headers */}
                 {WEEK_DAYS.map((day) => (
                   <div key={day} className="text-center text-sm font-medium text-foreground pb-3 border-b border-border">
                     {day}
                     <p className="text-[10px] text-muted-foreground font-normal">{weekDates[day]}</p>
                   </div>
                 ))}
-
-                {/* Slots */}
                 {WEEK_DAYS.map((day) => (
                   <div key={`cell-${day}`} className="min-h-[200px] border-r border-border last:border-r-0 p-2 flex flex-col gap-1.5 pt-3">
                     {TIME_SLOTS.map((time) => {
@@ -321,13 +304,11 @@ export default function SchedulingPage() {
                       const isConfirmed = slot?.status === "confirmed"
                       const isPending = slot?.status === "pending"
                       const isPreview = previewSlot?.day === day && previewSlot?.time === time
-
                       return (
                         <div
                           key={time}
                           onClick={() => {
                             if (isBooked) {
-                              // Click booked slot to open email preview
                               setPreviewSlot(slot)
                               setShowEmailPreview(true)
                               setSent(false)
@@ -350,7 +331,6 @@ export default function SchedulingPage() {
                           `}
                         >
                           <span className="font-medium">{time}</span>
-
                           {isBooked ? (
                             <>
                               <p className="mt-0.5 text-foreground font-medium truncate">
@@ -400,39 +380,36 @@ export default function SchedulingPage() {
               <CardTitle className="text-foreground text-sm">Upcoming Interviews</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
-              {upcomingInterviews.length === 0 && (
+              {upcomingInterviews.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">
                   No interviews scheduled yet.
                 </p>
+              ) : (
+                upcomingInterviews.map((slot, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 rounded-lg border border-border p-3 cursor-pointer hover:border-primary/40 transition-colors"
+                    onClick={() => {
+                      setPreviewSlot(slot)
+                      setShowEmailPreview(true)
+                      setSent(false)
+                      setSendError("")
+                    }}
+                  >
+                    <div className="size-8 rounded-full bg-muted flex items-center justify-center shrink-0">
+                      <User className="size-4 text-muted-foreground" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{slot.candidateName}</p>
+                      <p className="text-xs text-muted-foreground">{slot.date} at {slot.time}</p>
+                    </div>
+                    {slot.status === "confirmed"
+                      ? <Check className="size-4 text-success shrink-0" />
+                      : <AlertCircle className="size-4 text-warning shrink-0" />
+                    }
+                  </div>
+                ))
               )}
-              {upcomingInterviews.map((slot, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-3 rounded-lg border border-border p-3 cursor-pointer hover:border-primary/40 transition-colors"
-                  onClick={() => {
-                    setPreviewSlot(slot)
-                    setShowEmailPreview(true)
-                    setSent(false)
-                    setSendError("")
-                  }}
-                >
-                  <div className="size-8 rounded-full bg-muted flex items-center justify-center shrink-0">
-                    <User className="size-4 text-muted-foreground" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">
-                      {slot.candidateName}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {slot.date} at {slot.time}
-                    </p>
-                  </div>
-                  {slot.status === "confirmed"
-                    ? <Check className="size-4 text-success shrink-0" />
-                    : <AlertCircle className="size-4 text-warning shrink-0" />
-                  }
-                </div>
-              ))}
             </CardContent>
           </Card>
 
@@ -464,11 +441,9 @@ export default function SchedulingPage() {
                     {emailBody}
                   </div>
                 </div>
-
                 {sendError && (
                   <p className="text-xs text-destructive mt-3">{sendError}</p>
                 )}
-
                 <Button
                   onClick={handleSendInvite}
                   disabled={sending || sent}
