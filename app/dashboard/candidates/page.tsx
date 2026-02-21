@@ -209,13 +209,8 @@ function RejectModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-
-      {/* Modal */}
       <div className="relative z-10 w-full max-w-lg bg-background border border-border rounded-xl shadow-xl p-6 flex flex-col gap-4 mx-4">
-
-        {/* Header */}
         <div className="flex items-start justify-between">
           <div>
             <h2 className="text-base font-bold text-foreground flex items-center gap-2">
@@ -232,7 +227,6 @@ function RejectModal({
           </button>
         </div>
 
-        {/* Email preview */}
         <div className="rounded-lg bg-muted p-4 text-sm flex flex-col gap-2">
           <p className="text-muted-foreground">
             <span className="font-medium text-foreground">To:</span>{" "}
@@ -247,17 +241,10 @@ function RejectModal({
           </div>
         </div>
 
-        {error && (
-          <p className="text-xs text-destructive">{error}</p>
-        )}
+        {error && <p className="text-xs text-destructive">{error}</p>}
 
-        {/* Buttons */}
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            className="flex-1 bg-transparent text-foreground"
-            onClick={onClose}
-          >
+          <Button variant="outline" className="flex-1 bg-transparent text-foreground" onClick={onClose}>
             Cancel
           </Button>
           {sent ? (
@@ -265,15 +252,9 @@ function RejectModal({
               <CheckCircle2 className="size-4" /> Email Sent!
             </div>
           ) : (
-            <Button
-              onClick={sendReject}
-              disabled={sending}
-              className="flex-1 bg-destructive hover:bg-destructive/90 text-white"
-            >
-              {sending
-                ? <Loader2 className="size-4 mr-1 animate-spin" />
-                : <Send className="size-4 mr-1" />
-              }
+            <Button onClick={sendReject} disabled={sending}
+              className="flex-1 bg-destructive hover:bg-destructive/90 text-white">
+              {sending ? <Loader2 className="size-4 mr-1 animate-spin" /> : <Send className="size-4 mr-1" />}
               {sending ? "Sending..." : "Send Rejection Email"}
             </Button>
           )}
@@ -404,111 +385,126 @@ export default function CandidatesPage() {
   }
 
   // ── Detail View ────────────────────────────────────────────────────────────
+  // ✅ RejectModal is now included here too so it works from the detail view
   if (selectedCandidate) {
     return (
-      <div className="flex flex-col gap-6">
-        <Button variant="ghost" onClick={() => setShowDetail(null)} className="w-fit text-foreground">
-          <ChevronLeft className="size-4 mr-1" />
-          Back to candidates
-        </Button>
-        <div className="flex flex-col lg:flex-row gap-6">
-          <div className="flex-1 flex flex-col gap-6">
-            <Card className="border-border">
-              <CardContent className="pt-6">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h1 className="text-xl font-bold text-foreground">{selectedCandidate.name}</h1>
-                    <p className="text-sm text-muted-foreground">{selectedCandidate.email}</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {selectedCandidate.role} &middot; {selectedCandidate.experience}
-                    </p>
+      <>
+        {rejectCandidate && (
+          <RejectModal
+            candidate={rejectCandidate}
+            recruiter={recruiter}
+            onClose={() => setRejectCandidate(null)}
+            onStatusChange={(id, status) => {
+              setStatus(id, status)
+              setRejectCandidate(null)
+            }}
+          />
+        )}
+
+        <div className="flex flex-col gap-6">
+          <Button variant="ghost" onClick={() => setShowDetail(null)} className="w-fit text-foreground">
+            <ChevronLeft className="size-4 mr-1" />
+            Back to candidates
+          </Button>
+          <div className="flex flex-col lg:flex-row gap-6">
+            <div className="flex-1 flex flex-col gap-6">
+              <Card className="border-border">
+                <CardContent className="pt-6">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h1 className="text-xl font-bold text-foreground">{selectedCandidate.name}</h1>
+                      <p className="text-sm text-muted-foreground">{selectedCandidate.email}</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {selectedCandidate.role} &middot; {selectedCandidate.experience}
+                      </p>
+                    </div>
+                    <div className={`text-2xl font-bold ${selectedCandidate.score >= 85 ? "text-success" : selectedCandidate.score >= 75 ? "text-warning" : "text-destructive"}`}>
+                      {selectedCandidate.score}%
+                    </div>
                   </div>
-                  <div className={`text-2xl font-bold ${selectedCandidate.score >= 85 ? "text-success" : selectedCandidate.score >= 75 ? "text-warning" : "text-destructive"}`}>
-                    {selectedCandidate.score}%
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90"
+                      onClick={() => setStatus(selectedCandidate.id, "shortlisted")}>
+                      <ListChecks className="size-3.5 mr-1" /> Shortlist
+                    </Button>
+                    <Button size="sm" variant="outline" className="bg-transparent text-foreground">
+                      <CalendarClock className="size-3.5 mr-1" /> Schedule
+                    </Button>
+                    {/* ✅ Reject button in detail view now opens modal directly */}
+                    <Button size="sm" variant="outline"
+                      className="bg-transparent text-destructive hover:bg-destructive/10"
+                      onClick={() => setRejectCandidate(selectedCandidate)}>
+                      <XCircle className="size-3.5 mr-1" /> Reject
+                    </Button>
                   </div>
-                </div>
-                <div className="flex flex-wrap gap-2 mt-4">
-                  <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90"
-                    onClick={() => setStatus(selectedCandidate.id, "shortlisted")}>
-                    <ListChecks className="size-3.5 mr-1" /> Shortlist
-                  </Button>
-                  <Button size="sm" variant="outline" className="bg-transparent text-foreground">
-                    <CalendarClock className="size-3.5 mr-1" /> Schedule
-                  </Button>
-                  <Button size="sm" variant="outline"
-                    className="bg-transparent text-destructive hover:bg-destructive/10"
-                    onClick={() => setRejectCandidate(selectedCandidate)}>
-                    <XCircle className="size-3.5 mr-1" /> Reject
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
-            <Card className="border-border">
-              <CardHeader>
-                <CardTitle className="text-foreground flex items-center gap-2">
-                  <Brain className="size-4 text-primary" /> AI Assessment
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground leading-relaxed">{selectedCandidate.aiExplanation}</p>
-                <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-                  <Shield className="size-3.5 text-primary" />
-                  <span>Human review required before any action</span>
-                </div>
-              </CardContent>
-            </Card>
+              <Card className="border-border">
+                <CardHeader>
+                  <CardTitle className="text-foreground flex items-center gap-2">
+                    <Brain className="size-4 text-primary" /> AI Assessment
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{selectedCandidate.aiExplanation}</p>
+                  <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+                    <Shield className="size-3.5 text-primary" />
+                    <span>Human review required before any action</span>
+                  </div>
+                </CardContent>
+              </Card>
 
-            <Card className="border-border">
-              <CardHeader><CardTitle className="text-foreground">Resume Summary</CardTitle></CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground leading-relaxed">{selectedCandidate.summary}</p>
-              </CardContent>
-            </Card>
-          </div>
+              <Card className="border-border">
+                <CardHeader><CardTitle className="text-foreground">Resume Summary</CardTitle></CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{selectedCandidate.summary}</p>
+                </CardContent>
+              </Card>
+            </div>
 
-          <div className="w-full lg:w-80 flex flex-col gap-6">
-            <Card className="border-border">
-              <CardHeader>
-                <CardTitle className="text-foreground flex items-center gap-2">
-                  <BarChart3 className="size-4 text-primary" /> Strengths
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-col gap-2 text-sm text-muted-foreground">
-                  {(selectedCandidate.raw.strengths || []).slice(0, 6).map((s, i) => (
-                    <div key={`strength-${selectedCandidate.id}-${i}`} className="rounded-md border border-border p-2">{s}</div>
-                  ))}
-                  {(!selectedCandidate.raw.strengths || selectedCandidate.raw.strengths.length === 0) && (
-                    <div className="text-xs">—</div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            <div className="w-full lg:w-80 flex flex-col gap-6">
+              <Card className="border-border">
+                <CardHeader>
+                  <CardTitle className="text-foreground flex items-center gap-2">
+                    <BarChart3 className="size-4 text-primary" /> Strengths
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-col gap-2 text-sm text-muted-foreground">
+                    {(selectedCandidate.raw.strengths || []).slice(0, 6).map((s, i) => (
+                      <div key={`strength-${selectedCandidate.id}-${i}`} className="rounded-md border border-border p-2">{s}</div>
+                    ))}
+                    {(!selectedCandidate.raw.strengths || selectedCandidate.raw.strengths.length === 0) && (
+                      <div className="text-xs">—</div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
 
-            <Card className="border-border">
-              <CardHeader>
-                <CardTitle className="text-foreground flex items-center gap-2">
-                  <MessageSquare className="size-4 text-primary" /> Notes
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <textarea
-                  className="w-full h-24 rounded-md border border-input bg-transparent p-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="Add notes about this candidate..."
-                />
-              </CardContent>
-            </Card>
+              <Card className="border-border">
+                <CardHeader>
+                  <CardTitle className="text-foreground flex items-center gap-2">
+                    <MessageSquare className="size-4 text-primary" /> Notes
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <textarea
+                    className="w-full h-24 rounded-md border border-input bg-transparent p-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                    placeholder="Add notes about this candidate..."
+                  />
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
-      </div>
+      </>
     )
   }
 
   // ── List View ──────────────────────────────────────────────────────────────
   return (
     <>
-      {/* Reject popup modal */}
       {rejectCandidate && (
         <RejectModal
           candidate={rejectCandidate}
@@ -669,7 +665,6 @@ export default function CandidatesPage() {
                           onClick={() => setStatus(candidate.id, "shortlisted")} title="Shortlist">
                           <ListChecks className="size-3.5 text-primary" />
                         </Button>
-                        {/* Reject icon now opens popup */}
                         <Button variant="ghost" size="icon" className="size-8"
                           onClick={() => setRejectCandidate(candidate)} title="Reject">
                           <XCircle className="size-3.5 text-destructive" />
