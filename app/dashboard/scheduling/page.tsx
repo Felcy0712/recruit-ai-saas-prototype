@@ -12,7 +12,6 @@ import {
 import { createClient } from "@/lib/supabase/client"
 
 const LS_SCHEDULE_KEY = "recruitai_schedule_v1"
-
 const WEEK_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 const TIME_SLOTS = ["9:00 AM", "10:00 AM", "11:00 AM", "1:00 PM", "2:00 PM", "3:00 PM"]
 
@@ -59,6 +58,12 @@ function formatWeekLabel(monday: Date): string {
   })}`
 }
 
+function scoreColor(score: number) {
+  if (score >= 85) return "text-emerald-600 bg-emerald-50 border-emerald-200"
+  if (score >= 70) return "text-amber-600 bg-amber-50 border-amber-200"
+  return "text-red-600 bg-red-50 border-red-200"
+}
+
 export default function SchedulingPage() {
   const { user } = useUser()
 
@@ -78,7 +83,6 @@ export default function SchedulingPage() {
   const recruiterCompany = user?.company || "Acme Inc"
   const weekDates = getWeekDates(weekStart)
 
-  // ── Fetch shortlisted candidates from Supabase (score >= 85) ─────────────
   useEffect(() => {
     async function load() {
       setLoading(true)
@@ -105,7 +109,6 @@ export default function SchedulingPage() {
     load()
   }, [])
 
-  // ── Load saved schedule from localStorage ─────────────────────────────────
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS_SCHEDULE_KEY)
@@ -158,10 +161,7 @@ export default function SchedulingPage() {
   const upcomingInterviews = [...schedule]
     .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))
 
-  const emailSubject = previewSlot
-    ? `Interview Invitation for ${previewSlot.candidateName}`
-    : ""
-
+  const emailSubject = previewSlot ? `Interview Invitation for ${previewSlot.candidateName}` : ""
   const emailBody = previewSlot
     ? `Hi ${previewSlot.candidateName.split(" ")[0]},\n\nWe were impressed by your application and would like to invite you for an interview.\n\nProposed slot: ${previewSlot.day} ${previewSlot.time} (${previewSlot.date})\n\nPlease confirm your availability.\n\nBest regards,\n${recruiterName}\n${recruiterCompany}`
     : ""
@@ -222,36 +222,65 @@ export default function SchedulingPage() {
         </p>
       </div>
 
-      {/* Candidate selector */}
+      {/* ── Candidate selector — improved readability ── */}
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" />
           Loading shortlisted candidates...
         </div>
       ) : shortlisted.length > 0 ? (
-        <div className="flex flex-wrap gap-2 items-center">
-          <span className="text-sm text-muted-foreground mr-1">Book slot for:</span>
-          {shortlisted.map((c) => (
-            <Button
-              key={c.id}
-              size="sm"
-              variant={selectedCandidate?.id === c.id ? "default" : "outline"}
-              onClick={() => {
-                setSelectedCandidate(selectedCandidate?.id === c.id ? null : c)
-                setShowEmailPreview(false)
-                setPreviewSlot(null)
-              }}
-              className={selectedCandidate?.id === c.id
-                ? "bg-primary text-primary-foreground"
-                : "bg-transparent text-foreground border-border"}
-            >
-              {c.name.split(" ")[0]} · {c.score}%
-            </Button>
-          ))}
+        <div className="flex flex-col gap-3">
+          <p className="text-sm font-medium text-foreground">Book interview slot for:</p>
+          <div className="flex flex-wrap gap-3">
+            {shortlisted.map((c) => {
+              const isSelected = selectedCandidate?.id === c.id
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => {
+                    setSelectedCandidate(isSelected ? null : c)
+                    setShowEmailPreview(false)
+                    setPreviewSlot(null)
+                  }}
+                  className={`
+                    flex items-center gap-3 px-4 py-2.5 rounded-xl border-2 transition-all
+                    ${isSelected
+                      ? "border-primary bg-primary/5 shadow-sm"
+                      : "border-border bg-background hover:border-primary/40 hover:bg-muted/50"
+                    }
+                  `}
+                >
+                  {/* Avatar */}
+                  <div className={`
+                    size-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0
+                    ${isSelected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}
+                  `}>
+                    {c.name.charAt(0).toUpperCase()}
+                  </div>
+
+                  {/* Name + Role */}
+                  <div className="text-left">
+                    <p className={`text-sm font-semibold leading-tight ${isSelected ? "text-primary" : "text-foreground"}`}>
+                      {c.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground leading-tight">{c.role}</p>
+                  </div>
+
+                  {/* Score badge */}
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${scoreColor(c.score)}`}>
+                    {c.score}%
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
           {selectedCandidate && (
-            <span className="text-xs text-primary ml-1 italic">
-              Click an available slot to book for {selectedCandidate.name}
-            </span>
+            <div className="flex items-center gap-2 text-sm text-primary bg-primary/5 border border-primary/20 rounded-lg px-4 py-2.5">
+              <CalendarClock className="size-4 shrink-0" />
+              Click any available slot on the calendar to book for{" "}
+              <span className="font-semibold">{selectedCandidate.name}</span>
+            </div>
           )}
         </div>
       ) : (
@@ -396,8 +425,8 @@ export default function SchedulingPage() {
                       setSendError("")
                     }}
                   >
-                    <div className="size-8 rounded-full bg-muted flex items-center justify-center shrink-0">
-                      <User className="size-4 text-muted-foreground" />
+                    <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-sm font-bold text-primary">
+                      {slot.candidateName.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">{slot.candidateName}</p>
@@ -441,9 +470,7 @@ export default function SchedulingPage() {
                     {emailBody}
                   </div>
                 </div>
-                {sendError && (
-                  <p className="text-xs text-destructive mt-3">{sendError}</p>
-                )}
+                {sendError && <p className="text-xs text-destructive mt-3">{sendError}</p>}
                 <Button
                   onClick={handleSendInvite}
                   disabled={sending || sent}
