@@ -163,8 +163,14 @@ export default function SchedulingPage() {
 
   const emailSubject = previewSlot ? `Interview Invitation for ${previewSlot.candidateName}` : ""
   const emailBody = previewSlot
-    ? `Hi ${previewSlot.candidateName.split(" ")[0]},\n\nWe were impressed by your application and would like to invite you for an interview.\n\nProposed slot: ${previewSlot.day} ${previewSlot.time} (${previewSlot.date})\n\nPlease confirm your availability.\n\nBest regards,\n${recruiterName}\n${recruiterCompany}`
-    : ""
+   // ? `Hi ${previewSlot.candidateName.split(" ")[0]},\r\n\r\nWe were impressed by your application and would like to invite you for an interview.\n\nProposed slot: ${previewSlot.day} ${previewSlot.time} (${previewSlot.date})\n\nPlease confirm your availability.\n\nBest regards,\n${recruiterName}\n${recruiterCompany}`
+   ? `Hi ${previewSlot.candidateName.split(" ")[0]},<br><br>We were impressed by your application and would like to invite you for an interview.<br><br>Proposed slot: ${previewSlot.day} ${previewSlot.time} (${previewSlot.date})<br><br>Please confirm your availability.<br><br>Best regards,<br>${recruiterName}<br>${recruiterCompany}` 
+   : ""
+
+     const emailBodyPreview = previewSlot
+    ? `Hi ${previewSlot.candidateName.split(" ")[0]},\r\n\r\nWe were impressed by your application and would like to invite you for an interview.\n\nProposed slot: ${previewSlot.day} ${previewSlot.time} (${previewSlot.date})\n\nPlease confirm your availability.\n\nBest regards,\n${recruiterName}\n${recruiterCompany}`
+   //? `Hi ${previewSlot.candidateName.split(" ")[0]},<br><br>We were impressed by your application and would like to invite you for an interview.<br><br>Proposed slot: ${previewSlot.day} ${previewSlot.time} (${previewSlot.date})<br><br>Please confirm your availability.<br><br>Best regards,<br>${recruiterName}<br>${recruiterCompany}` 
+   : ""
 
   async function handleSendInvite() {
     if (!previewSlot) return
@@ -467,7 +473,7 @@ export default function SchedulingPage() {
                     {emailSubject}
                   </p>
                   <div className="border-t border-border pt-3 text-muted-foreground leading-relaxed whitespace-pre-line text-xs">
-                    {emailBody}
+                    {emailBodyPreview}
                   </div>
                 </div>
                 {sendError && <p className="text-xs text-destructive mt-3">{sendError}</p>}
