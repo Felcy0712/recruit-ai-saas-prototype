@@ -75,7 +75,7 @@ export default function SettingsPage() {
       if (error) throw new Error(error.message)
 
       localStorage.setItem("recruitai-user", JSON.stringify({ email }))
-      setProfile((prev) => prev ? { ...prev, first_name, last_name, email } : prev)
+      setProfile((prev) => prev ? { ...prev, first_name, last_name, email, company } : prev)
       setSavedProfile(true)
       setTimeout(() => setSavedProfile(false), 3000)
     } catch (e: any) {

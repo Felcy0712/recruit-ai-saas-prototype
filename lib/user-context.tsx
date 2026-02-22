@@ -5,7 +5,7 @@ import { createContext, useContext, useState, useEffect } from "react"
 type User = {
   name: string
   email: string
-  company?: string
+  company: string
 }
 
 const UserContext = createContext<{

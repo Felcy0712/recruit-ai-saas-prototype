@@ -58,6 +58,8 @@ export default function LoginPage() {
       // For a full auth flow you'd set a session here
       localStorage.setItem("user_id", user.id)
       localStorage.setItem("user_email", user.email)
+      localStorage.setItem("company", user.company || "")
+
 
       router.push("/dashboard")
     } catch (err) {

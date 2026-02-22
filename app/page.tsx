@@ -146,7 +146,7 @@ if (dbError || !user) {
     }
 
      // ✅ Use correct column names from your table
-     setUser({ name: user.username, email: user.email })
+     setUser({ name: user.username, email: user.email, company: user.company || "" })
      router.push("/dashboard")
     }
       catch (err) {

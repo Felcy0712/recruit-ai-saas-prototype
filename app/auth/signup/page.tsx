@@ -66,6 +66,7 @@ export default function SignUpPage() {
         active: true,
        status: "N",
        login_count: 0,
+        company: company.trim() || null,
     })
      .select()
      .maybeSingle()
