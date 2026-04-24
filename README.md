@@ -56,6 +56,10 @@ Scheduling:
 - **AI Processing**: n8n for agentic AI workflows
 - **Other**: TypeScript, ESLint, Prettier
 
+## Demo Video:
+https://www.loom.com/share/02aab72b0b0a49879d50456a39cc33bc
+
+
 ## Installation
 
 1. Clone the repository:
